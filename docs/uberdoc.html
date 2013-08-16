@@ -3032,23 +3032,26 @@ net.brehaut.ClojureTools = (function (SH) {
 </div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.5.1</td></tr><tr><td class="dep-name">gloss</td><td class="dotted"><hr /></td><td class="dep-version">0.2.2-rc1</td></tr><tr><td class="dep-name">expectations</td><td class="dotted"><hr /></td><td class="dep-version">1.4.53</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#by-example-gloss.core">by-example-gloss.core</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#by-example-gloss.core" name="by-example-gloss.core"><h1 class="project-name">by-example-gloss.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h2>The Basics</h2>
 
 <hr />
-</td><td class="codes"></td></tr><tr><td class="docs"><p><strong><em>Gloss is a DSL for describing, encoding, and decoding, byte formats</em></strong></p>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>In Gloss, a byte format is called a <em>frame</em>, frames are compiled into <em>codec</em>, which allow you to:</p>
+
+<p><strong><em>Gloss is a DSL for describing, encoding, and decoding, byte formats.</em></strong></p>
+
+<p>In Gloss, a byte format is called a <em>frame</em>, frames are compiled into <em>codec</em>, which allow you to:</p>
 
 <ul>
 <li>encode a data structure into a ByteBuffer<sup>1</sup>; or,</li>
 <li>decode a ByteBuffer into a data structure.</li>
 </ul>
 
-<p>A codec can be compiled from a single frame, or multiple nested codec and frames. A complicated codec can be
-built from several smaller, simple codec. That's the approach we will take.</p>
+<p>A frame is actually just a clojure data structure, nothing more. As we will see, that data structure might
+include other codec, meaning a complicated codec can be built from several smaller, simple codec.
+It's turtles all the way down.</p>
 
-<p>Codecs also support extended functionality such as pre-encode and post-decode transforms, and streaming. We'll
-cover the lot.</p>
+<p>Defining a complex codec by combining its simpler composite parts also allows us to test (and transform if needed)
+at a granular level.</p>
 
 <p><sup>1 ByteBuffers technically, but we'll get to that later</sup></p>
 </td><td class="codes"><pre class="brush: clojure">(ns by-example-gloss.core
-  (:require [gloss.core :refer [compile-frame defcodec ordered-map string]]
+  (:require [gloss.core :refer [compile-frame defcodec ordered-map string repeated]]
             [gloss.io :refer [encode decode to-byte-buffer contiguous]]
             [expectations :refer [expect run-all-tests]]))</pre></td></tr><tr><td class="docs"><p><em>frames</em>
 <hr /></p>
@@ -3064,9 +3067,9 @@ cover the lot.</p>
    :second :byte})</pre></td></tr><tr><td class="docs"><p>Lets compile these to codec and encode/decode some data</p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p><em>codec</em>
 <hr /></p>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>A codec created from our simplest frame.</p>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>We create a codec from our simplest frame by using compile-frame</p>
 </td><td class="codes"><pre class="brush: clojure">(def byte-codec
-  (compile-frame byte-frame))</pre></td></tr><tr><td class="docs"><p>We can use this codec to encode a byte into a buffer.</p>
+  (compile-frame byte-frame))</pre></td></tr><tr><td class="docs"><p>Then we use this codec to encode a byte into a buffer.</p>
 
 <ul>
 <li><em>to-byte-buffer</em> is utility method provided by Gloss.</li>
@@ -3079,7 +3082,7 @@ cover the lot.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect (to-byte-buffer '(126 127)) (first (encode vector-bytes-codec [126 127])))</pre></td></tr><tr><td class="docs"><p>and decode that vector from the buffer using the same.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect [126 127] (decode vector-bytes-codec (to-byte-buffer '(126 127))))</pre></td></tr><tr><td class="docs"><p>Rinse and repeat with our map-bytes-codec. Beware, Gloss encodes map values in a consistent
 but arbitrary order. In my example the bytes could have been writte as '(127 126). If you require a particular
-serialization order see: Gloss' ordered-map.</p>
+serialization order use Gloss' ordered-map.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec map-bytes-codec
   {:first :byte
    :second :byte})</pre></td></tr><tr><td class="docs"><p>We can encode/decode pretty much any clojure data structure using the primitives that Gloss provides.</p>
@@ -3104,7 +3107,8 @@ will in a moment, it's a very powerful, expressive DSL.</p>
          {:first 126 :second 127}] (decode nested-codec (to-byte-buffer '(123 124 125 126 127))))</pre></td></tr><tr><td class="docs"><p><em>string frames</em>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>These primitives are all fine and well, but in my case I need to parse HTTP headers, which means consuming strings.</p>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Luckily defining a stream of encoded text is simple in Gloss. All valid character sets are supported.</p>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Luckily defining a stream of encoded text is simple in Gloss. The keyword argument specifies a character encoding,
+all valid character encodings are supported.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec string-codec
   (string :utf-8 ))</pre></td></tr><tr><td class="docs"><p>For that codec to be any use we need to able to mix it with others, so we need to limit the string.
 Gloss provides for either fixed length or delimiters. We're going to focus solely on delimiters.</p>
@@ -3115,7 +3119,7 @@ as a delimiter.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect &quot;derek&quot; (decode dlm-string-codec (to-byte-buffer &quot;derekx&quot;)))
 (expect &quot;derek&quot; (decode dlm-string-codec (to-byte-buffer &quot;derekxx&quot;)))
 (expect &quot;derek&quot; (decode dlm-string-codec (to-byte-buffer &quot;dereky&quot;)))</pre></td></tr><tr><td class="docs"><p>We can include the delimiter in the extraced text with the argument:</p>
-</td><td class="codes"></td></tr><tr><td class="docs"><pre><code>:strip-delimiters? false.
+</td><td class="codes"></td></tr><tr><td class="docs"><pre><code>:strip-delimiters? false
 </code></pre>
 </td><td class="codes"><pre class="brush: clojure">(defcodec dlm-inclusive-codec
   (string :utf-8 :delimiters [&quot;x&quot; &quot;xx&quot; \y] :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>It's easy to overlook a subtle but important fact, Gloss not only supports multiple delimiters, it supports
@@ -3141,6 +3145,10 @@ delimiters where one is a shorter version of another ("x" and "xx"). The largest
 </td><td class="codes"></td></tr><tr><td class="docs"><p>By default Gloss is strict, your codec is required to consume all of the bytes provided in the input, else
 an exception is thrown.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect Exception (decode dlm-string-codec (to-byte-buffer &quot;derekxkylie&quot;)))</pre></td></tr><tr><td class="docs"><p>However, Gloss can be instructed to disregard remaining bytes, acquire text.</p>
-</td><td class="codes"><pre class="brush: clojure">(expect &quot;derek&quot; (decode dlm-string-codec (to-byte-buffer &quot;derekxkylie&quot;) false))</pre></td></tr><tr><td class="docs"><p><strong>repeated codec</strong></p>
+</td><td class="codes"><pre class="brush: clojure">(expect &quot;derek&quot; (decode dlm-string-codec (to-byte-buffer &quot;derekxkylie&quot;) false))</pre></td></tr><tr><td class="docs"><p><em>repeated codec</em>
+<hr /></p>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>So far all of our codec have been fixed, but this is where things get a little more interesting.</p>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Gloss allows you to repeat a frame. Either frames or codecs. By default a repeated frame</p>
+</td><td class="codes"></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(run-all-tests)</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr></table><div class="footer">Generated by <a href="https://github.com/fogus/marginalia">Marginalia</a>.&nbsp;&nbsp;Syntax highlighting provided by Alex Gorbatchev's <a href="http://alexgorbatchev.com/SyntaxHighlighter/">SyntaxHighlighter</a></div><script type="text/javascript">SyntaxHighlighter.defaults['gutter'] = false;
        SyntaxHighlighter.all()</script></body></html>

@@ -1,22 +1,23 @@
 ;; ## The Basics
 ;; ---
-
-;; ***Gloss is a DSL for describing, encoding, and decoding, byte formats***
-
+;;
+;; ***Gloss is a DSL for describing, encoding, and decoding, byte formats.***
+;;
 ;; In Gloss, a byte format is called a *frame*, frames are compiled into *codec*, which allow you to:
 ;;
 ;; - encode a data structure into a ByteBuffer<sup>1</sup>; or,
 ;; - decode a ByteBuffer into a data structure.
 ;;
-;; A codec can be compiled from a single frame, or multiple nested codec and frames. A complicated codec can be
-;; built from several smaller, simple codec. That's the approach we will take.
+;; A frame is actually just a clojure data structure, nothing more. As we will see, that data structure might
+;; include other codec, meaning a complicated codec can be built from several smaller, simple codec.
+;; It's turtles all the way down.
 ;;
-;; Codecs also support extended functionality such as pre-encode and post-decode transforms, and streaming. We'll
-;; cover the lot.
+;; Defining a complex codec by combining its simpler composite parts also allows us to test (and transform if needed)
+;; at a granular level.
 ;;
 ;; <sup>1 ByteBuffers technically, but we'll get to that later</sup>
 (ns by-example-gloss.core
-  (:require [gloss.core :refer [compile-frame defcodec ordered-map string]]
+  (:require [gloss.core :refer [compile-frame defcodec ordered-map string repeated]]
             [gloss.io :refer [encode decode to-byte-buffer contiguous]]
             [expectations :refer [expect run-all-tests]]))
 
@@ -47,10 +48,10 @@
 ;; ---
 
 (def byte-codec
-  "A codec created from our simplest frame."
+  "We create a codec from our simplest frame by using compile-frame"
   (compile-frame byte-frame))
 
-;; We can use this codec to encode a byte into a buffer.
+;; Then we use this codec to encode a byte into a buffer.
 ;;
 ;; - *to-byte-buffer* is utility method provided by Gloss.
 ;; - *encode* always results in a sequence of buffers
@@ -71,7 +72,7 @@
 
 ;; Rinse and repeat with our map-bytes-codec. Beware, Gloss encodes map values in a consistent
 ;; but arbitrary order. In my example the bytes could have been writte as '(127 126). If you require a particular
-;; serialization order see: Gloss' ordered-map.
+;; serialization order use Gloss' ordered-map.
 (defcodec map-bytes-codec
   {:first :byte
    :second :byte})
@@ -110,7 +111,8 @@
 
 ;; These primitives are all fine and well, but in my case I need to parse HTTP headers, which means consuming strings.
 
-;; Luckily defining a stream of encoded text is simple in Gloss. All valid character sets are supported.
+;; Luckily defining a stream of encoded text is simple in Gloss. The keyword argument specifies a character encoding,
+;; all valid character encodings are supported.
 (defcodec string-codec
   (string :utf-8 ))
 
@@ -129,7 +131,7 @@
 
 ;; We can include the delimiter in the extraced text with the argument:
 
-;;     :strip-delimiters? false.
+;;     :strip-delimiters? false
 (defcodec dlm-inclusive-codec
   (string :utf-8 :delimiters ["x" "xx" \y] :strip-delimiters? false))
 
@@ -155,7 +157,7 @@
 (defcodec dlm-selective-codec
   (string :utf-8 :delimiters ["x" "xx" \y] :value->delimiter choose-encoded-dlm))
 
-;; Now when encoding we use our selected delimiter, rather than default.
+;; Now when encoding we select a delimiter, rather than default.
 (expect (to-byte-buffer "derekx") (contiguous (encode dlm-selective-codec "derek")))
 (expect (to-byte-buffer "kyliexx") (contiguous (encode dlm-selective-codec "kylie")))
 (expect (to-byte-buffer "kirstyy") (contiguous (encode dlm-selective-codec "kirsty")))
@@ -170,6 +172,12 @@
 ;; However, Gloss can be instructed to disregard remaining bytes, acquire text.
 (expect "derek" (decode dlm-string-codec (to-byte-buffer "derekxkylie") false))
 
-;; **repeated codec**
+;; *repeated codec*
+;; ---
+
+;; So far all of our codec have been fixed, but this is where things get a little more interesting.
+
+;; Gloss allows you to repeat a frame. Either frames or codecs. By default a repeated frame
+
 (run-all-tests)
 
