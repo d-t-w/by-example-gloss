@@ -1,6 +1,6 @@
 # Gloss by Example
 
-A tutorial on using Gloss to decode and encode byte frames, and ultimately Http headers.
+A tutorial on using Gloss to decode and encode byte frames, leading to parsing HTTP headers.
 
 Annotated with Marginalia and validated with Expectations.
 

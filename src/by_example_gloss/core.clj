@@ -1,3 +1,6 @@
+;; ## The Basics
+;; ---
+
 ;; ***Gloss is a DSL for describing, encoding, and decoding, byte formats***
 
 ;; In Gloss, a byte format is called a *frame*, frames are compiled into *codec*, which allow you to:
@@ -21,6 +24,7 @@
 ;; ---
 
 ;; Gloss recognizes certain keywords as primitive data types, and you can define a frame using any combination of them.
+
 ;; We'll stick with :byte in our examples below, consider that inter-changeable with any of these.
 [:byte, :int16, :int32, :int64, :float32, :float64, :ubyte, :uint16, :uint32, :uint64 ]
 
@@ -65,21 +69,17 @@
 ;; and decode that vector from the buffer using the same.
 (expect [126 127] (decode vector-bytes-codec (to-byte-buffer '(126 127))))
 
+;; Rinse and repeat with our map-bytes-codec. Beware, Gloss encodes map values in a consistent
+;; but arbitrary order. In my example the bytes could have been writte as '(127 126). If you require a particular
+;; serialization order see: Gloss' ordered-map.
 (defcodec map-bytes-codec
   {:first :byte
    :second :byte})
 
-;; Rinse and repeat with our map-bytes-codec.
+;; We can encode/decode pretty much any clojure data structure using the primitives that Gloss provides.
 (expect (to-byte-buffer '(126 127)) (first (encode map-bytes-codec {:first 126
                                                                     :second 127})))
 
-;; We can encode/decode pretty much any clojure data structure using the primitives that Gloss provides.
-;;
-;; Beware that Gloss encodes map values in a consistent but arbitrary way. My example above works
-;; because the values happen to be serialized in the order I expected '(126 127) but could just as easily
-;; have serialized as '(127 126).
-;;
-;; If you need to guarantee serialization order (i.e. ape an existing binary protocol), use Gloss' ordered-map.
 (expect {:first 126
          :second 127} (decode map-bytes-codec (to-byte-buffer '(126 127))))
 
@@ -105,7 +105,7 @@
          125
          {:first 126 :second 127}] (decode nested-codec (to-byte-buffer '(123 124 125 126 127))))
 
-;; *string codec*
+;; *string frames*
 ;; ---
 
 ;; These primitives are all fine and well, but in my case I need to parse HTTP headers, which means consuming strings.
@@ -170,5 +170,6 @@
 ;; However, Gloss can be instructed to disregard remaining bytes, acquire text.
 (expect "derek" (decode dlm-string-codec (to-byte-buffer "derekxkylie") false))
 
+;; **repeated codec**
 (run-all-tests)
 
