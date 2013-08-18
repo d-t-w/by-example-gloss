@@ -9,17 +9,16 @@
 ;;     - [repeated frames](#repeated)
 ;;     - [transforms](#transforms)
 ;;     - [strict decoding](#decoding)
-;; - ***a simple HTTP header codec***
+;; - ***an initial HTTP header codec***
 ;;     - [definition](#init-definition)
 ;;     - [transforms](#init-transforms)
 ;;     - [the codec](#init-codec)
 ;;     - [limitations](#init-limitations)
-;; - ***a better HTTP codec***
-;; &nbsp;
+;; - ***a better HTTP header codec***
 
+;; &nbsp;
 ;; ## The Basics
 ;; ---
-;; &nbsp;
 
 ;; ***Gloss is a DSL for describing byte formats.***
 ;;
