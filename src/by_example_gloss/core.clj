@@ -20,7 +20,7 @@
 ;; ## The Basics
 ;; ---
 ;; &nbsp;
-;;
+
 ;; ***Gloss is a DSL for describing byte formats.***
 ;;
 ;; In Gloss, a byte format is called a *frame*, frames are compiled into *codec*, which allow you to:
