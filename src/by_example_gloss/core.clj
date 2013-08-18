@@ -1,8 +1,27 @@
+;; ## Content
+;; ---
+;;
+;; - ***the basics***
+;;     - [frames](#frames)
+;;     - [codec](#codec)
+;;     - [nesting codec](#nesting)
+;;     - [string frames](#strings)
+;;     - [repeated frames](#repeated)
+;;     - [transforms](#transforms)
+;;     - [strict decoding](#decoding)
+;; - ***a simple HTTP header codec***
+;;     - [definition](#init-definition)
+;;     - [transforms](#init-transforms)
+;;     - [the codec](#init-codec)
+;;     - [limitations](#init-limitations)
+;; - ***a better HTTP codec***
+;; &nbsp;
+
 ;; ## The Basics
 ;; ---
 ;; &nbsp;
 ;;
-;; ***Gloss is a DSL for describing, encoding, and decoding, byte formats.***
+;; ***Gloss is a DSL for describing byte formats.***
 ;;
 ;; In Gloss, a byte format is called a *frame*, frames are compiled into *codec*, which allow you to:
 ;;
@@ -22,7 +41,7 @@
             [gloss.io :refer [encode decode to-byte-buffer contiguous]]
             [expectations :refer [expect run-all-tests]]))
 
-;; *frames*
+;; <a id="frames"></a>*frames*
 ;; ---
 
 ;; Gloss recognizes certain keywords as primitive data types, and you can define a frame using any combination of them.
@@ -43,7 +62,7 @@
   {:first :byte
    :second :byte})
 
-;; *codec*
+;; <a id="codec"></a>*codec*
 ;; ---
 
 (def byte-codec
@@ -95,7 +114,7 @@
    :second 127}
   (decode map-bytes-codec (to-byte-buffer '(126 127))))
 
-;; *nesting codec*
+;; <a id="nesting"></a>*nesting codec*
 ;; ---
 
 ;; As mentioned earlier, you can nest codec. This one is a vector of two previously defined codec,
@@ -121,7 +140,7 @@
 
 ;; &nbsp;
 ;;
-;; *string frames*
+;; <a id="strings"></a>*string frames*
 ;; ---
 
 ;; These primitives are all fine and well, but if we want to parse HTTP headers, we need to consume strings.
@@ -197,7 +216,7 @@
   (to-byte-buffer "kirstyy")
   (contiguous (encode dlm-selective-codec "kirsty")))
 
-;; *repeated frames*
+;; <a id="repeated"></a>*repeated frames*
 ;; ---
 
 ;; Gloss supports repeated sequences of frames.
@@ -261,7 +280,7 @@
 
 ;; &nbsp;
 ;;
-;; *pre-encode and post-decode transforms*
+;; <a id="transforms"></a>*pre-encode and post-decode transforms*
 ;; ---
 
 ;; When we compile a frame into a codec, we can supply functions which transform the input data before
@@ -288,7 +307,7 @@
   (to-byte-buffer "name: value\n")
   (contiguous (encode trans-codec {:name "value"})))
 
-;; *strict decoding*
+;; <a id="decoding"></a>*strict decoding*
 ;; ---
 
 ;; By default Gloss is strict, your codec is required to consume all of the bytes provided in the input, else
@@ -306,7 +325,7 @@
 ;;
 ;;
 ;;
-;; ## A simple HTTP headers codec
+;; ## An initial HTTP header codec
 ;; ---
 ;; &nbsp;
 
@@ -324,6 +343,9 @@
 ;; Will decode to this map structure
 (def headers-data {:name ["value"]
                    :name2 ["value2" "value3"]})
+
+;; <a id="init-definition"></a>*definition*
+;; ---
 
 ;; First, a codec which matches a single header, decoding:
 (defcodec header
@@ -356,6 +378,9 @@
   [["name" ["value"]] ["name2" ["value2"]] ["name2" ["value3"]]]
   (decode initial-headers headers-buffer))
 
+;; <a id="init-transforms"></a>*tranforms*
+;; ---
+
 ;; The next step is to create a post-decode transform method which will work that data into something more useable.
 (defn output-to-map [data]
   (apply merge-with into (for [[k v] data] {(keyword k) v})))
@@ -377,6 +402,9 @@
   (decode initial-headers headers-buffer)
   (input-to-vectors headers-data))
 
+;; <a id="init-codec"></a>*the codec*
+;; ---
+
 ;; A basic HTTP header codec
 (def simple-headers
   (compile-frame
@@ -386,13 +414,16 @@
     input-to-vectors
     output-to-map))
 
-;; Decodes our sample data correctly
+;; Decodes our sample data in a map correctly
 (expect
   headers-data
   (decode simple-headers headers-buffer))
 
-;; Unfortunately our encoding doesn't work. As we encode, each internal repeated header is delimited, and then
-;; the outer delimiter is appended to the end. We end up with 3x rn rather than two.
+;; <a id="init-limitations"></a>*limitations*
+;; ---
+
+;; Unfortunately our encoding appends an extra "\r\n" to the buffer. This is because each header is delimited with rn,
+;; and the entire sequence with rn rn.
 (expect
   (to-byte-buffer "name: value\r\nname2: value2\r\nname2: value3\r\n\r\n\r\n")
   (contiguous (encode simple-headers headers-data)))
@@ -416,6 +447,11 @@
 (expect
   (to-byte-buffer "name: value\r\nname2: value2\r\nname2: value3\r\n\r\n\r\n")
   (contiguous (encode simple-headers-selective-dlm headers-data)))
+
+;; Another limitation. Our codec fails if we have an empty set of headers.
+(expect
+  Exception
+  (decode simple-headers (to-byte-buffer "\r\n\r\n")))
 
 (run-all-tests)
 
