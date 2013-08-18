@@ -1,5 +1,6 @@
 ;; ## The Basics
 ;; ---
+;; &nbsp;
 ;;
 ;; ***Gloss is a DSL for describing, encoding, and decoding, byte formats.***
 ;;
@@ -118,6 +119,8 @@
    {:first 126 :second 127}]
   (decode nested-codec (to-byte-buffer '(123 124 125 126 127))))
 
+;; &nbsp;
+;;
 ;; *string frames*
 ;; ---
 
@@ -193,20 +196,6 @@
 (expect
   (to-byte-buffer "kirstyy")
   (contiguous (encode dlm-selective-codec "kirsty")))
-
-;; *strict decoding*
-;; ---
-
-;; By default Gloss is strict, your codec is required to consume all of the bytes provided in the input, else
-;; an exception is thrown.
-(expect
-  Exception
-  (decode dlm-string-codec (to-byte-buffer "derekxkylie")))
-
-;; However, Gloss can be instructed to disregard remaining bytes, acquire text.
-(expect
-  "derek"
-  (decode dlm-string-codec (to-byte-buffer "derekxkylie") false))
 
 ;; *repeated frames*
 ;; ---
@@ -299,12 +288,27 @@
   (to-byte-buffer "name: value\n")
   (contiguous (encode trans-codec {:name "value"})))
 
+;; *strict decoding*
+;; ---
+
+;; By default Gloss is strict, your codec is required to consume all of the bytes provided in the input, else
+;; an exception is thrown.
+(expect
+  Exception
+  (decode dlm-string-codec (to-byte-buffer "derekxkylie")))
+
+;; However, Gloss can be instructed to disregard remaining bytes, acquire text.
+(expect
+  "derek"
+  (decode dlm-string-codec (to-byte-buffer "derekxkylie") false))
+
 ;; &nbsp;
 ;;
 ;;
 ;;
 ;; ## A simple HTTP headers codec
 ;; ---
+;; &nbsp;
 
 ;; We'll start with a *very* simple definition of HTTP headers:
 ;;
@@ -315,53 +319,103 @@
 (def ^:const rnrn "\r\n\r\n")
 
 ;; Where a buffer with this text value (two headers, one repeated)
-(def headers_buffer "name: value\r\nname2: value2\r\nname2: value3\r\n\r\n")
+(def headers-buffer (to-byte-buffer "name: value\r\nname2: value2\r\nname2: value3\r\n\r\n"))
 
 ;; Will decode to this map structure
-(def headers_data {:name ["value"]
+(def headers-data {:name ["value"]
                    :name2 ["value2" "value3"]})
 
 ;; First, a codec which matches a single header, decoding:
 (defcodec header
-  [(string :utf-8 :delimiters [": "]) (string :utf-8 :delimiters [rn rnrn])])
+  [(string :utf-8 :delimiters [": "]) [(string :utf-8 :delimiters [rn rnrn])]])
 
-;; - "name: value\r\n" to  ["name" "value"] or;
+;; - "name: value\r\n" to  ["name" ["value"]] or;
 (expect
-  ["name" "value"]
+  ["name" ["value"]]
   (decode header (to-byte-buffer "name: value\r\n")))
 
 ;; - "name: value\r\n\r\n" to the same
 (expect
-  ["name" "value"]
+  ["name" ["value"]]
   (decode header (to-byte-buffer "name: value\r\n\r\n")))
 
-;; This first codec gets us part of the way
-(defcodec headers-1
-  (repeated
-    (ordered-map (string :utf-8 :delimiters [":"]) (string :utf-8 :delimiters [rn rnrn]))
+;; As always, we can encode as well.
+(expect
+  (to-byte-buffer "name: value\r\n")
+  (contiguous (encode header ["name" ["value"]])))
+
+;; Then we repeat that codec. We don't consume the sequence delimiter, rather we allow our internal
+;; frames to eat up those bytes.
+(defcodec initial-headers
+  (repeated header
     :delimiters [rnrn]
     :strip-delimiters? false))
 
+;; Our test buffer is decoded to a fairly verbose vector.
 (expect
-  ["first" "second"]
-  (decode dlm-rep-string (to-byte-buffer "first\nsecond\n\0")))
+  [["name" ["value"]] ["name2" ["value2"]] ["name2" ["value3"]]]
+  (decode initial-headers headers-buffer))
+
+;; The next step is to create a post-decode transform method which will work that data into something more useable.
+(defn output-to-map [data]
+  (apply merge-with into (for [[k v] data] {(keyword k) v})))
+
+;; We test our transforms at this level, confirming that transforming the output of our codec will give
+;; the desired data structure.
+(expect
+  headers-data
+  (output-to-map (decode initial-headers headers-buffer)))
+
+;; Finally, we create the inverse of our post-decode method, breaking down input maps into a format that our
+;; codec can accept. This will be applied as a pre-encode transform.
+(defn input-to-vectors [data]
+  (vec (apply concat (for [[k v] (vec data)]
+                       (for [x v] [(name k) [x]])))))
+
+;; Again we test our transform gives the desired output.
+(expect
+  (decode initial-headers headers-buffer)
+  (input-to-vectors headers-data))
+
+;; A basic HTTP header codec
+(def simple-headers
+  (compile-frame
+    (repeated header
+      :delimiters [rnrn]
+      :strip-delimiters? false)
+    input-to-vectors
+    output-to-map))
+
+;; Decodes our sample data correctly
+(expect
+  headers-data
+  (decode simple-headers headers-buffer))
+
+;; Unfortunately our encoding doesn't work. As we encode, each internal repeated header is delimited, and then
+;; the outer delimiter is appended to the end. We end up with 3x rn rather than two.
+(expect
+  (to-byte-buffer "name: value\r\nname2: value2\r\nname2: value3\r\n\r\n\r\n")
+  (contiguous (encode simple-headers headers-data)))
 
 ;; Gloss doesn't currently support specifying the delimiter to use when encoding a repeated sequence.
 (defn specify-encoding-dlm [value]
   "\r\n")
 
-;; We would like this codec to end its repeated section with a single "\r\n".
-(def spec-dlm-rep-string
-  (repeated
-    (string :utf-8 :delimiters ["\r\n"])
-    :delimiters ["\r\n\r\n"]
-    :value->delimiter specify-encoding-dlm))
+;; We would like this instruct this sequence to use a single rn as its encoding delimiter, something that would
+;; work for the string frame, but is currently a gloss limitation.
+(def simple-headers-selective-dlm
+  (compile-frame
+    (repeated header
+      :delimiters [rnrn]
+      :strip-delimiters? false
+      :value->delimiter specify-encoding-dlm)
+  input-to-vectors
+  output-to-map))
 
-;; The inability to select a delimiter when encoding repeated frames causes problems with encoding
-;; our HTTP headers codec in a moment.
+;; The :value->delimiter function is ignored.
 (expect
-  (to-byte-buffer "first\r\nsecond\r\n\r\n\r\n")
-  (contiguous (encode spec-dlm-rep-string ["first" "second"])))
+  (to-byte-buffer "name: value\r\nname2: value2\r\nname2: value3\r\n\r\n\r\n")
+  (contiguous (encode simple-headers-selective-dlm headers-data)))
 
 (run-all-tests)
 
