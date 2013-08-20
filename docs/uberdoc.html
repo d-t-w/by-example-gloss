@@ -3047,7 +3047,7 @@ net.brehaut.ClojureTools = (function (SH) {
 <li><a href="#init-transforms">transforms</a></li>
 <li><a href="#init-codec">the codec</a></li>
 <li><a href="#init-limitations">limitations</a></li></ul></li>
-<li><strong><em>a better HTTP codec</em></strong></li>
+<li><strong><em>a better HTTP header codec</em></strong></li>
 </ul>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>&nbsp;</p>
 
@@ -3085,6 +3085,9 @@ at a granular level.</p>
   [:byte :byte ])</pre></td></tr><tr><td class="docs"><p>This frame contains the same data, but in map form rather than a vector.</p>
 </td><td class="codes"><pre class="brush: clojure">(def map-bytes-frame
   {:first :byte
+   :second :byte})</pre></td></tr><tr><td class="docs"><p>Frames can have constant values which are not encoded, and always occur when decoded.</p>
+</td><td class="codes"><pre class="brush: clojure">(def map-bytes-frame-with-constant
+  {:first &quot;constant-value&quot;
    :second :byte})</pre></td></tr><tr><td class="docs"><p><a id="codec"></a><em>codec</em>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>We create a codec from our simplest frame with compile-frame</p>
@@ -3317,7 +3320,8 @@ frames to eat up those bytes.</p>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>The next step is to create a post-decode transform method which will work that data into something more useable.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn output-to-map [data]
-  (apply merge-with into (for [[k v] data] {(keyword k) v})))</pre></td></tr><tr><td class="docs"><p>We test our transforms at this level, confirming that transforming the output of our codec will give
+  (apply merge-with into (for [[k v] data]
+                           {(keyword k) v})))</pre></td></tr><tr><td class="docs"><p>We test our transforms at this level, confirming that transforming the output of our codec will give
 the desired data structure.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   headers-data
@@ -3325,7 +3329,8 @@ the desired data structure.</p>
 codec can accept. This will be applied as a pre-encode transform.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn input-to-vectors [data]
   (vec (apply concat (for [[k v] (vec data)]
-                       (for [x v] [(name k) [x]])))))</pre></td></tr><tr><td class="docs"><p>Again we test our transform gives the desired output.</p>
+                       (for [x v]
+                         [(name k) [x]])))))</pre></td></tr><tr><td class="docs"><p>Again we test our transform gives the desired output.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   (decode initial-headers headers-buffer)
   (input-to-vectors headers-data))</pre></td></tr><tr><td class="docs"><p><a id="init-codec"></a><em>the codec</em>
@@ -3356,8 +3361,8 @@ work for the string frame, but is currently a gloss limitation.</p>
       :delimiters [rnrn]
       :strip-delimiters? false
       :value-&gt;delimiter specify-encoding-dlm)
-  input-to-vectors
-  output-to-map))</pre></td></tr><tr><td class="docs"><p>The :value->delimiter function is ignored.</p>
+    input-to-vectors
+    output-to-map))</pre></td></tr><tr><td class="docs"><p>The :value->delimiter function is ignored.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   (to-byte-buffer &quot;name: value\r\nname2: value2\r\nname2: value3\r\n\r\n\r\n&quot;)
   (contiguous (encode simple-headers-selective-dlm headers-data)))</pre></td></tr><tr><td class="docs"><p>Another limitation. Our codec fails if we have an empty set of headers.</p>

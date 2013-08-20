@@ -61,6 +61,11 @@
   {:first :byte
    :second :byte})
 
+(def map-bytes-frame-with-constant
+  "Frames can have constant values which are not encoded, and always occur when decoded."
+  {:first "constant-value"
+   :second :byte})
+
 ;; <a id="codec"></a>*codec*
 ;; ---
 
@@ -382,7 +387,8 @@
 
 ;; The next step is to create a post-decode transform method which will work that data into something more useable.
 (defn output-to-map [data]
-  (apply merge-with into (for [[k v] data] {(keyword k) v})))
+  (apply merge-with into (for [[k v] data]
+                           {(keyword k) v})))
 
 ;; We test our transforms at this level, confirming that transforming the output of our codec will give
 ;; the desired data structure.
@@ -394,7 +400,8 @@
 ;; codec can accept. This will be applied as a pre-encode transform.
 (defn input-to-vectors [data]
   (vec (apply concat (for [[k v] (vec data)]
-                       (for [x v] [(name k) [x]])))))
+                       (for [x v]
+                         [(name k) [x]])))))
 
 ;; Again we test our transform gives the desired output.
 (expect
@@ -439,8 +446,8 @@
       :delimiters [rnrn]
       :strip-delimiters? false
       :value->delimiter specify-encoding-dlm)
-  input-to-vectors
-  output-to-map))
+    input-to-vectors
+    output-to-map))
 
 ;; The :value->delimiter function is ignored.
 (expect
@@ -451,6 +458,20 @@
 (expect
   Exception
   (decode simple-headers (to-byte-buffer "\r\n\r\n")))
+
+;; &nbsp;
+;;
+;;
+;;
+;; ## An better HTTP header codec
+;; ---
+;; &nbsp;
+
+;; An extended codec which will
+;;
+;; - Support parsing an empty set of headers
+;; - Support long headers, where values can be broken across several lines.
+
 
 (run-all-tests)
 
