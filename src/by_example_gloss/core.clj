@@ -15,6 +15,7 @@
 ;;     - [the codec](#init-codec)
 ;;     - [limitations](#init-limitations)
 ;; - ***a better HTTP header codec***
+;;     - [the codec](#better-codec)
 
 ;; &nbsp;
 ;; ## The Basics
@@ -27,29 +28,30 @@
 ;; - encode a data structure into a ByteBuffer<sup>1</sup>; or,
 ;; - decode a ByteBuffer into a data structure.
 ;;
-;; A frame is actually just a clojure data structure, that simple. As we will see, that data structure might
-;; include other codec, meaning a complicated codec can be built from several smaller, simple codec.
-;; It's turtles all the way down.
+;; A frame is just a clojure data structure, that simple. That data structure might include other codec, meaning a
+;; complicated codec can be built from several smaller, simple codec.
 ;;
-;; Defining a complex codec by combining its composite parts allows us to test (and transform if needed)
-;; at a granular level.
+;; Defining codec by their composite parts allows testing (and transformation if needed) at a granular level.
 ;;
-;; <sup>1 ByteBuffers technically, but we'll get to that later</sup>
+;; <sup>1 technically Gloss encodes to a sequence of ByteBuffers</sup>
 (ns by-example-gloss.core
-  (:require [gloss.core :refer [compile-frame defcodec ordered-map string repeated]]
+  (:require [clojure.walk :refer [keywordize-keys stringify-keys]]
+            [clojure.string :refer [trim]]
+            [gloss.core :refer [compile-frame defcodec header string repeated]]
             [gloss.io :refer [encode decode to-byte-buffer contiguous]]
-            [expectations :refer [expect run-all-tests]]))
+            [expectations :refer [expect run-all-tests]]
+            [gloss.core.codecs :refer [identity-codec]]))
 
 ;; <a id="frames"></a>*frames*
 ;; ---
 
-;; Gloss recognizes certain keywords as primitive data types, and you can define a frame using any combination of them.
-
-;; We'll start with :byte in our examples below, consider that inter-changeable with any of these.
+;; A frame can contain a number of different primitive data types.
+;;
+;; The examples below generally use :byte, consider that inter-changeable.
 [:byte, :int16, :int32, :int64, :float32, :float64, :ubyte, :uint16, :uint32, :uint64 ]
 
 (def byte-frame
-  "The simplest frame I could imagine, a single byte."
+  "A very simple frame, a single byte."
   :byte )
 
 (def vector-bytes-frame
@@ -70,10 +72,10 @@
 ;; ---
 
 (def byte-codec
-  "We create a codec from our simplest frame with compile-frame"
+  "A codec created from the simplest frame"
   (compile-frame byte-frame))
 
-;; Then we use this codec to encode a byte into a buffer.
+;; Can encode a byte into a buffer.
 ;;
 ;; - *to-byte-buffer* is utility method provided by Gloss.
 ;; - *encode* always results in a sequence of buffers
@@ -81,38 +83,38 @@
   (to-byte-buffer 127)
   (first (encode byte-codec 127)))
 
-;; And the inverse, decoding a buffer into a byte value.
+;; And the inverse, decode a buffer into a byte.
 (expect
   127
   (decode byte-codec (to-byte-buffer 127)))
 
-;; Gloss provides a macro shortcut, defcodec, for defining codec.
+;; Gloss provides a codec defining macro, defcodec.
 (defcodec vector-bytes-codec
   vector-bytes-frame)
 
-;; We can encode a vector into a buffer using our vector-bytes-codec
+;; A vector encoded into a buffer
 (expect
   (to-byte-buffer '(126 127))
   (first (encode vector-bytes-codec [126 127])))
 
-;; and decode that vector from the buffer using the same.
+;; can be decoded from that buffer with the same codec.
 (expect
   [126 127]
   (decode vector-bytes-codec (to-byte-buffer '(126 127))))
 
-;; Rinse and repeat with our map-bytes-codec. Beware, Gloss encodes map values in a consistent
-;; but arbitrary order. In my example the bytes could have been writte as '(127 126). If you require a particular
-;; serialization order use Gloss' ordered-map.
+;; Rinse and repeat with the map-bytes-codec.
 (defcodec map-bytes-codec
   {:first :byte
    :second :byte})
 
-;; We can encode/decode pretty much any clojure data structure using the primitives that Gloss provides.
+;; Gloss encodes map values in a consistent but arbitrary order. In this example the bytes could have
+;; been written as '(127 126)
 (expect
   (to-byte-buffer '(126 127))
   (first (encode map-bytes-codec {:first 126
                                   :second 127})))
 
+;; If you require a particular serialization order use Gloss' ordered-map.
 (expect
   {:first 126
    :second 127}
@@ -121,20 +123,17 @@
 ;; <a id="nesting"></a>*nesting codec*
 ;; ---
 
-;; As mentioned earlier, you can nest codec. This one is a vector of two previously defined codec,
-;; one frame, and one map.
+;; A codec can be defined as a data structure which contains other codec.
 (defcodec nested-codec
   [vector-bytes-codec {:foo "bar"} byte-frame map-bytes-codec])
 
-;; We can parse this complicated structure just as we did our simple codec.
+;; Meaning more complex codec can be built from simpler parts.
 (expect (to-byte-buffer '(123 124 125 126 127)) (first (encode nested-codec [[123 124]
                                                                              {:foo "bar"}
                                                                              125
                                                                              {:first 126 :second 127}])))
 
-;; To my mind this is one of the most powerful aspects of Gloss. We can build really very complicated codec
-;; from simple composite, well-tested parts. And when you throw in pre-encode and post-decode transforms, as we
-;; will in a moment, it's a very powerful, expressive DSL.
+;; This can be advantageous if you want to test or transform at a granular level.
 (expect
   [[123 124]
    {:foo "bar"}
@@ -147,69 +146,69 @@
 ;; <a id="strings"></a>*string frames*
 ;; ---
 
-;; These primitives are all fine and well, but if we want to parse HTTP headers, we need to consume strings.
+;; Aside from these primitives, Gloss supports parsing streams of text.
 
-;; Luckily defining a stream of encoded text is simple in Gloss. The keyword argument specifies a character encoding,
-;; all valid character encodings are supported.
-(defcodec string-codec
+;; The first argument specifies a character encoding.
+(defcodec unbound-codec
   (string :utf-8 ))
 
-;; For that codec to be any use we need to able to mix it with others, so we need to limit the string.
-;; Gloss provides for either fixed length or delimiters. We're going to focus solely on delimiters.
+;; Gloss provides for either fixed length or delimited text. We're going to focus solely on delimited.
 
-;; Here's a string codec which is delimited by any of three character sequences. Any byte-sequence can be used
+;; This string is delimited by any of three character sequences. Any byte-sequence can be used
 ;; as a delimiter.
-(defcodec dlm-string-codec
+(defcodec string-codec
   (string :utf-8 :delimiters ["x" "xx" \y]))
 
-;; When we decode a buffer with that codec, the text prior to the delimiter is extracted.
+;; When applied to a buffer, the text prior to the delimiter is extracted.
 (expect
   "derek"
-  (decode dlm-string-codec (to-byte-buffer "derekx")))
+  (decode string-codec (to-byte-buffer "derekx")))
 (expect
   "derek"
-  (decode dlm-string-codec (to-byte-buffer "derekxx")))
+  (decode string-codec (to-byte-buffer "derekxx")))
 (expect
   "derek"
-  (decode dlm-string-codec (to-byte-buffer "dereky")))
+  (decode string-codec (to-byte-buffer "dereky")))
 
-;; We can include the delimiter in the extracted text with the argument:
+;; The delimiter can be included in the extracted text with:
 
 ;;     :strip-delimiters? false
 (defcodec dlm-inclusive-codec
   (string :utf-8 :delimiters ["x" "xx" \y] :strip-delimiters? false))
 
-;; It's easy to overlook a subtle but important fact, Gloss not only supports multiple delimiters, it supports
-;; delimiters where one is a shorter version of another ("x" and "xx"). The largest delimiter is always matched.
-;;
-;; We utilize that fact when decoding HTTP headers where each header can be delimited by "\r\n" or "\r\n\r\n")
 (expect
   "derekx"
-  (decode dlm-inclusive-codec (to-byte-buffer "derekx")))
+  (decode dlm-inclusive-codec (to-byte-buffer "derekx") false))
+
+;; When decoding with multiple delimiters:
+
+;; - the first delimiter is always matched; and,
+(expect
+  "dereky"
+  (decode dlm-inclusive-codec (to-byte-buffer "derekyx") false))
+
+;; - the longest delimiter is always matched
 (expect
   "derekxx"
   (decode dlm-inclusive-codec (to-byte-buffer "derekxx")))
-(expect
-  "dereky"
-  (decode dlm-inclusive-codec (to-byte-buffer "dereky")))
 
-;; As with all codec, we can encode as well as decode. By default Gloss will encode with the first delimiter.
+;; By default Gloss will encode with the first delimiter.
 (expect
   (to-byte-buffer "derekx")
-  (contiguous (encode dlm-string-codec "derek")))
+  (contiguous (encode string-codec "derek")))
 
-;; If we want to select a specific delimiter while encoding, we can provide a function via the
-;; :value->delimiter argument to our string codec which selects a delimiter at encoding time.
+;; To select a specific delimiter while encoding
 (defn choose-encoded-dlm [value]
   (condp = value
     "derek" ["x"]
     "kylie" ["xx"]
     ["y"]))
 
+;; provide a function via the :value->delimiter argument.
 (defcodec dlm-selective-codec
   (string :utf-8 :delimiters ["x" "xx" \y] :value->delimiter choose-encoded-dlm))
 
-;; Now when encoding we select a delimiter, rather than default.
+;; Now the delimiter depends on the value being encoded.
 (expect
   (to-byte-buffer "derekx")
   (contiguous (encode dlm-selective-codec "derek")))
@@ -223,15 +222,15 @@
 ;; <a id="repeated"></a>*repeated frames*
 ;; ---
 
-;; Gloss supports repeated sequences of frames.
+;; Gloss supports repeating frames.
 (def rep-byte (repeated :byte ))
 
-;; By default the encoded data is prefixed with a 32 bit integer which holds the number of repetitions
+;; By default encoded data is prefixed with a 32 bit integer which declares the number of repetitions.
 (expect
   (to-byte-buffer '(0 0 0 1 127))
   (first (encode rep-byte [127])))
 
-;; Repeated sections always encode/decode vectors
+;; Repeated frames always encode/decode to vectors.
 (expect
   (to-byte-buffer '(0 0 0 2 126 127))
   (first (encode rep-byte [126 127])))
@@ -239,16 +238,13 @@
   [127]
   (decode rep-byte (to-byte-buffer '(0 0 0 1 127))))
 
-;; Rather than use a prefix, we can provide termination delimiters.
-
-;; Here we repeat delimited strings, the sequence also terminated by delimiter.
+;; Repetition can be terminated by delimiter, rather than prefix.
 (def dlm-rep-string
   (repeated
     (string :utf-8 :delimiters ["\n"])
     :delimiters ["\0"]))
 
-;; We could also specify a custom prefix or no prefix at all, in which case codec would have no bound and would
-;; consume all the input.
+;; Gloss also supports custom prefix or no prefix at all, the repeated frame would expect to consume all input.
 (expect
   (to-byte-buffer "first\nsecond\n\0")
   (contiguous (encode dlm-rep-string ["first" "second"])))
@@ -256,15 +252,13 @@
   ["first" "second"]
   (decode dlm-rep-string (to-byte-buffer "first\nsecond\n\0")))
 
-;; When decoding a repeated section, gloss scans first for the delimiter of the repeated section, then provides the
-;; matched bytes to the inner frame to be consumed. Repeating the inner frame must end with all of the matched bytes
-;; being completely consumed.
+;; Gloss scans first for the delimiter of the repeated section, then provides the matched bytes to the inner frame
+;; for consumption. All bytes must be consumed or an exception is thrown.
 (expect
   Exception
   (decode dlm-rep-string (to-byte-buffer "first\nsecond\nleft-over-bytes\0")))
 
-;; Similarly to the string frame, we can instruct gloss to leave the repeated-frame delimiter in the
-;; matched bytes to be consumed by the inner frame. Again we use:
+;; Both gloss/repeated and gloss/string support leaving the delimiter in the matched bytes.
 
 ;;     :strip-delimiters? false
 (def dlm-rep-string-x
@@ -287,43 +281,45 @@
 ;; <a id="transforms"></a>*pre-encode and post-decode transforms*
 ;; ---
 
-;; When we compile a frame into a codec, we can supply functions which transform the input data before
-;; encoding,
+;; When compiling a frame, we can supply functions that:
+
+;; -  transform the input before encoding; and,
 (defn transform-input [data]
-  (vector (mapv name (keys data)) (vec (vals data))))
+  (first (stringify-keys data)))
 
-;; or the output data after decoding.
-(defn transform-output [data]
-  (zipmap (mapv keyword (first data)) (second data)))
+;; - transform the output after decoding.
+(defn transform-output [[k v]]
+  {(keyword k) v})
 
-;; This codec is defined with a frame which is vector based
+;; This codec talks in vectors, but that is only an intermediary state.
 (def trans-codec
   (compile-frame
-    [[(string :utf-8 :delimiters [": "])] [(string :utf-8 :delimiters ["\n"])]]
+    [(string :utf-8 :delimiters [": "]) (string :utf-8 :delimiters ["\n"])]
     transform-input
     transform-output))
 
-;; However its input and output are maps. The vector transformed.
-(expect
-  {:name "value"}
-  (decode trans-codec (to-byte-buffer "name: value\n")))
+;; The input to encode is transformed from a map
 (expect
   (to-byte-buffer "name: value\n")
   (contiguous (encode trans-codec {:name "value"})))
 
+;; and the output from decode back to a map.
+(expect
+  {:name "value"}
+  (decode trans-codec (to-byte-buffer "name: value\n")))
+
 ;; <a id="decoding"></a>*strict decoding*
 ;; ---
 
-;; By default Gloss is strict, your codec is required to consume all of the bytes provided in the input, else
-;; an exception is thrown.
+;; Gloss is strict by default, codec are required to consume all input bytes.
 (expect
   Exception
-  (decode dlm-string-codec (to-byte-buffer "derekxkylie")))
+  (decode string-codec (to-byte-buffer "derekxkylie")))
 
-;; However, Gloss can be instructed to disregard remaining bytes, acquire text.
+;; However, Gloss can disregard remaining bytes, acquire result.
 (expect
   "derek"
-  (decode dlm-string-codec (to-byte-buffer "derekxkylie") false))
+  (decode string-codec (to-byte-buffer "derekxkylie") false))
 
 ;; &nbsp;
 ;;
@@ -333,128 +329,120 @@
 ;; ---
 ;; &nbsp;
 
-;; We'll start with a *very* simple definition of HTTP headers:
+;; A *very* simple definition of HTTP headers:
 ;;
 ;; - Repeated text of the format "name: value\r\n"
 ;; - The entire section ending with "\r\n\r\n"
-;; - Headers of the same name can be repeated
 (def ^:const rn "\r\n")
 (def ^:const rnrn "\r\n\r\n")
 
-;; Where a buffer with this text value (two headers, one repeated)
-(def headers-buffer (to-byte-buffer "name: value\r\nname2: value2\r\nname2: value3\r\n\r\n"))
+;; A buffer with this text value
+(def initial-buffer (to-byte-buffer "name: value\r\nname2: value2\r\n\r\n"))
 
-;; Will decode to this map structure
-(def headers-data {:name ["value"]
-                   :name2 ["value2" "value3"]})
+;; will encode/decode from/to this map structure
+(def initial-data {:name "value"
+                   :name2 "value2"})
 
 ;; <a id="init-definition"></a>*definition*
 ;; ---
 
 ;; First, a codec which matches a single header, decoding:
-(defcodec header
-  [(string :utf-8 :delimiters [": "]) [(string :utf-8 :delimiters [rn rnrn])]])
+(defcodec init-header
+  [(string :utf-8 :delimiters [": "]) (string :utf-8 :delimiters [rn rnrn])])
 
-;; - "name: value\r\n" to  ["name" ["value"]] or;
+;; - "name: value\r\n" to  ["name" "value"] or;
 (expect
-  ["name" ["value"]]
-  (decode header (to-byte-buffer "name: value\r\n")))
+  ["name" "value"]
+  (decode init-header (to-byte-buffer "name: value\r\n")))
 
 ;; - "name: value\r\n\r\n" to the same
 (expect
-  ["name" ["value"]]
-  (decode header (to-byte-buffer "name: value\r\n\r\n")))
+  ["name" "value"]
+  (decode init-header (to-byte-buffer "name: value\r\n\r\n")))
 
-;; As always, we can encode as well.
+;; and encoding the data back to the intial buffer.
 (expect
   (to-byte-buffer "name: value\r\n")
-  (contiguous (encode header ["name" ["value"]])))
+  (contiguous (encode init-header ["name" "value"])))
 
-;; Then we repeat that codec. We don't consume the sequence delimiter, rather we allow our internal
-;; frames to eat up those bytes.
+;; That header codec can be repeated. The repeated section leaves its delimiter in the matched bytes to be consumed
+;; by the internal, repeated headers.
 (defcodec initial-headers
-  (repeated header
+  (repeated init-header
     :delimiters [rnrn]
     :strip-delimiters? false))
 
-;; Our test buffer is decoded to a fairly verbose vector.
+;; The buffer can be decoded into a vector.
 (expect
-  [["name" ["value"]] ["name2" ["value2"]] ["name2" ["value3"]]]
-  (decode initial-headers headers-buffer))
+  [["name" "value"] ["name2" "value2"]]
+  (decode initial-headers initial-buffer))
 
 ;; <a id="init-transforms"></a>*tranforms*
 ;; ---
 
-;; The next step is to create a post-decode transform method which will work that data into something more useable.
+;; A post-decode transform works our output into a more practical form.
 (defn output-to-map [data]
-  (apply merge-with into (for [[k v] data]
-                           {(keyword k) v})))
+  (keywordize-keys (into {} data)))
 
-;; We test our transforms at this level, confirming that transforming the output of our codec will give
-;; the desired data structure.
 (expect
-  headers-data
-  (output-to-map (decode initial-headers headers-buffer)))
+  {:name "value"
+   :name2 "value2"}
+  (output-to-map [["name" "value"] ["name2" "value2"]]))
 
-;; Finally, we create the inverse of our post-decode method, breaking down input maps into a format that our
-;; codec can accept. This will be applied as a pre-encode transform.
-(defn input-to-vectors [data]
-  (vec (apply concat (for [[k v] (vec data)]
-                       (for [x v]
-                         [(name k) [x]])))))
+;; Similarly, a pre-encode transform breaks input into an acceptable form.
+(defn input-to-vector [data]
+  (vec (stringify-keys data)))
 
-;; Again we test our transform gives the desired output.
+;; Meaning a map can be encoded into the simple header format.
 (expect
-  (decode initial-headers headers-buffer)
-  (input-to-vectors headers-data))
+  [["name" "value"] ["name2" "value2"]]
+  (input-to-vector {:name "value"
+                    :name2 "value2"}))
 
 ;; <a id="init-codec"></a>*the codec*
 ;; ---
 
-;; A basic HTTP header codec
+;; A very basic HTTP header codec
 (def simple-headers
   (compile-frame
-    (repeated header
+    (repeated init-header
       :delimiters [rnrn]
       :strip-delimiters? false)
-    input-to-vectors
+    input-to-vector
     output-to-map))
 
-;; Decodes our sample data in a map correctly
+;; Decodes the sample data in a map correctly
 (expect
-  headers-data
-  (decode simple-headers headers-buffer))
+  initial-data
+  (decode simple-headers initial-buffer))
 
 ;; <a id="init-limitations"></a>*limitations*
 ;; ---
 
-;; Unfortunately our encoding appends an extra "\r\n" to the buffer. This is because each header is delimited with rn,
-;; and the entire sequence with rn rn.
+;; Unfortunately encoding emits the delimiter of each header, and the delimiter of the
+;; repeated section, meaning the final written delimiter is wrong.
 (expect
-  (to-byte-buffer "name: value\r\nname2: value2\r\nname2: value3\r\n\r\n\r\n")
-  (contiguous (encode simple-headers headers-data)))
+  (to-byte-buffer "name: value\r\nname2: value2\r\n\r\n\r\n")
+  (contiguous (encode simple-headers initial-data)))
 
-;; Gloss doesn't currently support specifying the delimiter to use when encoding a repeated sequence.
+;; Gloss supports specifying an encoding delimiter for string frames, but not repeated sequences.
 (defn specify-encoding-dlm [value]
   "\r\n")
 
-;; We would like this instruct this sequence to use a single rn as its encoding delimiter, something that would
-;; work for the string frame, but is currently a gloss limitation.
+;; Ideally gloss/repeated would either,
+;;
+;; - take an encoding-delimiter argument; or,
+;; - extend :strip-delimiters? to allow partial-stripping
 (def simple-headers-selective-dlm
   (compile-frame
-    (repeated header
+    (repeated init-header
       :delimiters [rnrn]
-      :strip-delimiters? false
-      :value->delimiter specify-encoding-dlm)
-    input-to-vectors
+      :encoding-delimiter rn ; <- encode this delimiter; or,
+      :strip-delimiters? 2) ; <- strip two bytes
+    input-to-vector
     output-to-map))
 
-;; The :value->delimiter function is ignored.
-(expect
-  (to-byte-buffer "name: value\r\nname2: value2\r\nname2: value3\r\n\r\n\r\n")
-  (contiguous (encode simple-headers-selective-dlm headers-data)))
-
-;; Another limitation. Our codec fails if we have an empty set of headers.
+;; A final limitation, empty set of headers fails.
 (expect
   Exception
   (decode simple-headers (to-byte-buffer "\r\n\r\n")))
@@ -463,14 +451,62 @@
 ;;
 ;;
 ;;
-;; ## An better HTTP header codec
+;; ## A slightly better HTTP header codec
 ;; ---
+;; <sup>due to the limitations above, we're only concerned with decoding</sup>
 ;; &nbsp;
 
-;; An extended codec which will
-;;
-;; - Support parsing an empty set of headers
-;; - Support long headers, where values can be broken across several lines.
+;; - Dont require a space after the colon separator.
+(defcodec better-header
+  [(string :utf-8 :delimiters [":"]) (string :utf-8 :delimiters [rn rnrn])])
+
+;; - Repeated names combined into a single comma separated value.
+;; - Whitespace trimmed from values.
+(defn output-to-merged-map [data]
+  (apply merge-with #(str %1 "," %2)
+    (map (fn [[k v]] {(keyword k) (trim v)}) data)))
+
+(expect
+  {:name "value"
+   :name2 "value2,value3"}
+  (output-to-merged-map [["name" "value"] ["name2" " value2"] ["name2" "value3 "]]))
+
+;; <a id="better-codec"></a>*the codec*
+;; ---
+
+;; A slightly better HTTP header codec
+(def better-headers
+  (compile-frame
+    (repeated better-header
+      :delimiters [rnrn]
+      :strip-delimiters? false)
+    #(identity %)
+    output-to-merged-map))
+
+;; provides better HTTP header extraction.
+(expect
+  {:name "value"
+   :name2 "value2,value3,value4"
+   :name3 "value5"}
+  (decode better-headers (to-byte-buffer (str
+                                           "name: value\r\n"
+                                           "name2:value2\r\n"
+                                           "name2:value3 \r\n"
+                                           "name3: value5 \r\n"
+                                           "name2:value4\r\n\r\n"))))
+
+(def folding-headers
+  (compile-frame
+    (repeated (string :utf-8 :delimiters [":" "\r\n" "\r\n\r\n"])
+      :delimiters [rnrn]
+      :strip-delimiters? false)
+    #(identity %)
+    #(identity %)))
+
+(expect
+  ["name" "value" " value2"]
+  (decode folding-headers (to-byte-buffer (str
+                                           "name:value\r\n value2\r\n\r\n"))))
 
 
 (run-all-tests)
