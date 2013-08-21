@@ -3029,7 +3029,7 @@ net.brehaut.ClojureTools = (function (SH) {
   };
 })(SyntaxHighlighter);
 </script><title>d-t-w.by-example-gloss -- Marginalia</title></head><body><table><tr><td class="docs"><div class="header"><h1 class="project-name">d-t-w.by-example-gloss</h1><h2 class="project-version">0.1</h2><br /><p>Encoding and Decoding Data Structures with Gloss</p>
-</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.5.1</td></tr><tr><td class="dep-name">gloss</td><td class="dotted"><hr /></td><td class="dep-version">0.2.2-rc1</td></tr><tr><td class="dep-name">expectations</td><td class="dotted"><hr /></td><td class="dep-version">1.4.53</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#by-example-gloss.core">by-example-gloss.core</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#by-example-gloss.core" name="by-example-gloss.core"><h1 class="project-name">by-example-gloss.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h2>Content</h2>
+</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.5.1</td></tr><tr><td class="dep-name">gloss</td><td class="dotted"><hr /></td><td class="dep-version">0.2.2-rc1</td></tr><tr><td class="dep-name">expectations</td><td class="dotted"><hr /></td><td class="dep-version">1.4.53</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#by-example-gloss.core">by-example-gloss.core</a></li><li><a href="#by-example-gloss.ext">by-example-gloss.ext</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#by-example-gloss.core" name="by-example-gloss.core"><h1 class="project-name">by-example-gloss.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h2>Content</h2>
 
 <hr />
 
@@ -3049,6 +3049,8 @@ net.brehaut.ClojureTools = (function (SH) {
 <li><a href="#init-limitations">limitations</a></li></ul></li>
 <li><strong><em>a better HTTP header codec</em></strong>
 <ul><li><a href="#better-codec">the codec</a></li></ul></li>
+<li><strong><em>a complete HTTP header codec</em></strong>
+<ul><li><a href="#complete-codec">the codec</a></li></ul></li>
 </ul>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>&nbsp;</p>
 
@@ -3071,12 +3073,22 @@ complicated codec can be built from several smaller, simple codec.</p>
 
 <p><sup>1 technically Gloss encodes to a sequence of ByteBuffers</sup></p>
 </td><td class="codes"><pre class="brush: clojure">(ns by-example-gloss.core
-  (:require [clojure.walk :refer [keywordize-keys stringify-keys]]
-            [clojure.string :refer [trim]]
-            [gloss.core :refer [compile-frame defcodec header string repeated]]
-            [gloss.io :refer [encode decode to-byte-buffer contiguous]]
-            [expectations :refer [expect run-all-tests]]
-            [gloss.core.codecs :refer [identity-codec]]))</pre></td></tr><tr><td class="docs"><p><a id="frames"></a><em>frames</em>
+  (:require [clojure.string :refer [trim
+                                    lower-case]]
+            [clojure.walk :refer [keywordize-keys
+                                  stringify-keys]]
+            [by-example-gloss.ext :refer [compile-frame-ext]]
+            [gloss.core :refer [compile-frame
+                                defcodec header
+                                string
+                                repeated
+                                delimited-block]]
+            [gloss.io :refer [encode
+                              decode
+                              to-byte-buffer
+                              contiguous]]
+            [expectations :refer [expect
+                                  run-all-tests]]))</pre></td></tr><tr><td class="docs"><p><a id="frames"></a><em>frames</em>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>A frame can contain a number of different primitive data types.</p>
 
@@ -3346,23 +3358,17 @@ repeated section, meaning the final written delimiter is wrong.</p>
   (to-byte-buffer &quot;name: value\r\nname2: value2\r\n\r\n\r\n&quot;)
   (contiguous (encode simple-headers initial-data)))</pre></td></tr><tr><td class="docs"><p>Gloss supports specifying an encoding delimiter for string frames, but not repeated sequences.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn specify-encoding-dlm [value]
-  &quot;\r\n&quot;)</pre></td></tr><tr><td class="docs"><p>Ideally gloss/repeated would either,</p>
-
-<ul>
-<li>take an encoding-delimiter argument; or,</li>
-<li>extend :strip-delimiters? to allow partial-stripping</li>
-</ul>
+  &quot;\r\n&quot;)</pre></td></tr><tr><td class="docs"><p>Ideally gloss/repeated would allo an encoding-delimiter.</p>
 </td><td class="codes"><pre class="brush: clojure">(def simple-headers-selective-dlm
   (compile-frame
     (repeated init-header
       :delimiters [rnrn]
-      :encoding-delimiter rn ; &lt;- encode this delimiter; or,
-      :strip-delimiters? 2) ; &lt;- strip two bytes
-    input-to-vector
-    output-to-map))</pre></td></tr><tr><td class="docs"><p>A final limitation, empty set of headers fails.</p>
+      :encoding-delimiter rn ; &lt;- encode this delimiter
+      input-to-vector
+      output-to-map)))</pre></td></tr><tr><td class="docs"><p>A final limitation, empty set of headers fails.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   Exception
-  (decode simple-headers (to-byte-buffer &quot;\r\n\r\n&quot;)))</pre></td></tr><tr><td class="docs"><p>&nbsp;</p>
+  (decode simple-headers (to-byte-buffer rnrn)))</pre></td></tr><tr><td class="docs"><p>&nbsp;</p>
 
 <h2>A slightly better HTTP header codec</h2>
 
@@ -3375,11 +3381,12 @@ repeated section, meaning the final written delimiter is wrong.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec better-header
   [(string :utf-8 :delimiters [&quot;:&quot;]) (string :utf-8 :delimiters [rn rnrn])])</pre></td></tr><tr><td class="docs"><ul>
 <li>Repeated names combined into a single comma separated value.</li>
-<li>Whitespace trimmed from values.</li>
+<li>Names trimmed and lower-cased</li>
+<li>Values trimmed.</li>
 </ul>
 </td><td class="codes"><pre class="brush: clojure">(defn output-to-merged-map [data]
   (apply merge-with #(str %1 &quot;,&quot; %2)
-    (map (fn [[k v]] {(keyword k) (trim v)}) data)))</pre></td></tr><tr><td class="docs">
+    (map (fn [[k v]] {(keyword (-&gt; k trim lower-case)) (trim v)}) data)))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(expect
   {:name &quot;value&quot;
    :name2 &quot;value2,value3&quot;}
@@ -3397,22 +3404,102 @@ repeated section, meaning the final written delimiter is wrong.</p>
   {:name &quot;value&quot;
    :name2 &quot;value2,value3,value4&quot;
    :name3 &quot;value5&quot;}
-  (decode better-headers (to-byte-buffer (str
-                                           &quot;name: value\r\n&quot;
-                                           &quot;name2:value2\r\n&quot;
-                                           &quot;name2:value3 \r\n&quot;
-                                           &quot;name3: value5 \r\n&quot;
-                                           &quot;name2:value4\r\n\r\n&quot;))))</pre></td></tr><tr><td class="docs">
+  (decode better-headers
+    (to-byte-buffer (str
+                      &quot;name: value\r\n&quot;
+                      &quot;name2:value2\r\n&quot;
+                      &quot;name2:value3 \r\n&quot;
+                      &quot;name3: value5 \r\n&quot;
+                      &quot;name2:value4\r\n\r\n&quot;))))</pre></td></tr><tr><td class="docs"><p>&nbsp;</p>
+
+<h2>A complete HTTP header codec</h2>
+
+<p><hr />
+&nbsp;</p>
+</td><td class="codes"></td></tr><tr><td class="docs"><ul>
+<li>Http values can be folded over several lines</li>
+</ul>
+</td><td class="codes"><pre class="brush: clojure">(def folded-buf
+  (to-byte-buffer (str
+                    &quot;name: value\r\n&quot;
+                    &quot;name2:value2\r\n&quot;
+                    &quot; value3 \r\n&quot;
+                    &quot;\tvalue3a \r\n&quot;
+                    &quot;name3: value5 \r\n&quot;
+                    &quot;name2:value4\r\n\r\n&quot;)))</pre></td></tr><tr><td class="docs"><ul>
+<li>Where "\r\n " and "\r\n\t" should be parsed as " "</li>
+</ul>
+</td><td class="codes"><pre class="brush: clojure">(def unfolded-buf
+  (to-byte-buffer (str
+                    &quot;name: value\r\n&quot;
+                    &quot;name2:value2 value3  value3a \r\n&quot;
+                    &quot;name3: value5 \r\n&quot;
+                    &quot;name2:value4 \r\n\r\n&quot;)))</pre></td></tr><tr><td class="docs"><ul>
+<li>And eventually decoded into this structure</li>
+</ul>
+</td><td class="codes"><pre class="brush: clojure">(def unfolded-data
+  {:name &quot;value&quot;
+   :name2 &quot;value2 value3  value3a,value4&quot;
+   :name3 &quot;value5&quot;})</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def ^:const rn-space &quot;\r\n &quot;)
+(def ^:const rn-tab &quot;\r\n\t&quot;)
+(def sp-buf (to-byte-buffer &quot; &quot;))
+(def rnrn-buf (to-byte-buffer rnrn))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defcodec part-unfold-codec
+  (repeated
+    (delimited-block [rn-space rn-tab rnrn] true)
+    :delimiters [rnrn]
+    :strip-delimiters? false))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn unfold [bufs]
+  (if (= (first bufs) rnrn-buf)
+    bufs
+    (let [buf-seq (decode part-unfold-codec bufs)
+          seq-size (count buf-seq)]
+      (if (= seq-size 1)
+        bufs
+        (list (contiguous (interpose sp-buf (flatten (conj buf-seq rnrn-buf)))))))))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(expect unfolded-buf (first (unfold (seq [folded-buf]))))</pre></td></tr><tr><td class="docs"><p><a id="complete-codec"></a><em>the codec</em>
+<hr /></p>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>A complete HTTP header codec</p>
 </td><td class="codes"><pre class="brush: clojure">(def folding-headers
-  (compile-frame
-    (repeated (string :utf-8 :delimiters [&quot;:&quot; &quot;\r\n&quot; &quot;\r\n\r\n&quot;])
+  (compile-frame-ext
+    (repeated better-header
       :delimiters [rnrn]
       :strip-delimiters? false)
     #(identity %)
-    #(identity %)))</pre></td></tr><tr><td class="docs">
+    unfold
+    output-to-merged-map))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(expect
-  [&quot;name&quot; &quot;value&quot; &quot; value2&quot;]
-  (decode folding-headers (to-byte-buffer (str
-                                           &quot;name:value\r\n value2\r\n\r\n&quot;))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(run-all-tests)</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr></table><div class="footer">Generated by <a href="https://github.com/fogus/marginalia">Marginalia</a>.&nbsp;&nbsp;Syntax highlighting provided by Alex Gorbatchev's <a href="http://alexgorbatchev.com/SyntaxHighlighter/">SyntaxHighlighter</a></div><script type="text/javascript">SyntaxHighlighter.defaults['gutter'] = false;
+  unfolded-data
+  (decode folding-headers folded-buf))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(run-all-tests)</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#by-example-gloss.ext" name="by-example-gloss.ext"><h1 class="project-name">by-example-gloss.ext</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h2>Gloss Extensions</h2>
+</td><td class="codes"><pre class="brush: clojure">(ns by-example-gloss.ext
+  (:use [gloss.core.structure]
+        [clojure.walk]
+        [gloss.core protocols]
+        [gloss.data primitives bytes])
+  (:require [clojure.zip :as z])
+  (:import [java.nio
+            ByteBuffer]))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn- compile-frame- [f]
+  (cond
+    (map? f) (convert-map (zipmap (keys f) (map compile-frame- (vals f))))
+    (sequential? f) (convert-sequence (map compile-frame- f))
+    :else f))</pre></td></tr><tr><td class="docs"><p>Allow a pre-decoder method when compiling a codec.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn compile-frame-ext
+  ([frame pre-encoder pre-decoder post-decoder]
+    (let [codec (compile-frame frame)
+          read-codec (compose-callback
+                       codec
+                       (fn [x b]
+                         [true (post-decoder x) b]))]
+      (reify
+        Reader
+        (read-bytes [_ b]
+          (read-bytes read-codec (pre-decoder b)))
+        Writer
+        (sizeof [_]
+          (sizeof codec))
+        (write-bytes [_ buf v]
+          (write-bytes codec buf (pre-encoder v)))))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr></table><div class="footer">Generated by <a href="https://github.com/fogus/marginalia">Marginalia</a>.&nbsp;&nbsp;Syntax highlighting provided by Alex Gorbatchev's <a href="http://alexgorbatchev.com/SyntaxHighlighter/">SyntaxHighlighter</a></div><script type="text/javascript">SyntaxHighlighter.defaults['gutter'] = false;
        SyntaxHighlighter.all()</script></body></html>

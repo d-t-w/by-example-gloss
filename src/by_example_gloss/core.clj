@@ -16,6 +16,8 @@
 ;;     - [limitations](#init-limitations)
 ;; - ***a better HTTP header codec***
 ;;     - [the codec](#better-codec)
+;; - ***a complete HTTP header codec***
+;;     - [the codec](#complete-codec)
 
 ;; &nbsp;
 ;; ## The Basics
@@ -35,12 +37,22 @@
 ;;
 ;; <sup>1 technically Gloss encodes to a sequence of ByteBuffers</sup>
 (ns by-example-gloss.core
-  (:require [clojure.walk :refer [keywordize-keys stringify-keys]]
-            [clojure.string :refer [trim]]
-            [gloss.core :refer [compile-frame defcodec header string repeated]]
-            [gloss.io :refer [encode decode to-byte-buffer contiguous]]
-            [expectations :refer [expect run-all-tests]]
-            [gloss.core.codecs :refer [identity-codec]]))
+  (:require [clojure.string :refer [trim
+                                    lower-case]]
+            [clojure.walk :refer [keywordize-keys
+                                  stringify-keys]]
+            [by-example-gloss.ext :refer [compile-frame-ext]]
+            [gloss.core :refer [compile-frame
+                                defcodec header
+                                string
+                                repeated
+                                delimited-block]]
+            [gloss.io :refer [encode
+                              decode
+                              to-byte-buffer
+                              contiguous]]
+            [expectations :refer [expect
+                                  run-all-tests]]))
 
 ;; <a id="frames"></a>*frames*
 ;; ---
@@ -429,23 +441,19 @@
 (defn specify-encoding-dlm [value]
   "\r\n")
 
-;; Ideally gloss/repeated would either,
-;;
-;; - take an encoding-delimiter argument; or,
-;; - extend :strip-delimiters? to allow partial-stripping
+;; Ideally gloss/repeated would allo an encoding-delimiter.
 (def simple-headers-selective-dlm
   (compile-frame
     (repeated init-header
       :delimiters [rnrn]
-      :encoding-delimiter rn ; <- encode this delimiter; or,
-      :strip-delimiters? 2) ; <- strip two bytes
-    input-to-vector
-    output-to-map))
+      :encoding-delimiter rn ; <- encode this delimiter
+      input-to-vector
+      output-to-map)))
 
 ;; A final limitation, empty set of headers fails.
 (expect
   Exception
-  (decode simple-headers (to-byte-buffer "\r\n\r\n")))
+  (decode simple-headers (to-byte-buffer rnrn)))
 
 ;; &nbsp;
 ;;
@@ -461,10 +469,11 @@
   [(string :utf-8 :delimiters [":"]) (string :utf-8 :delimiters [rn rnrn])])
 
 ;; - Repeated names combined into a single comma separated value.
-;; - Whitespace trimmed from values.
+;; - Names trimmed and lower-cased
+;; - Values trimmed.
 (defn output-to-merged-map [data]
   (apply merge-with #(str %1 "," %2)
-    (map (fn [[k v]] {(keyword k) (trim v)}) data)))
+    (map (fn [[k v]] {(keyword (-> k trim lower-case)) (trim v)}) data)))
 
 (expect
   {:name "value"
@@ -488,26 +497,83 @@
   {:name "value"
    :name2 "value2,value3,value4"
    :name3 "value5"}
-  (decode better-headers (to-byte-buffer (str
-                                           "name: value\r\n"
-                                           "name2:value2\r\n"
-                                           "name2:value3 \r\n"
-                                           "name3: value5 \r\n"
-                                           "name2:value4\r\n\r\n"))))
+  (decode better-headers
+    (to-byte-buffer (str
+                      "name: value\r\n"
+                      "name2:value2\r\n"
+                      "name2:value3 \r\n"
+                      "name3: value5 \r\n"
+                      "name2:value4\r\n\r\n"))))
 
+;; &nbsp;
+;;
+;;
+;;
+;; ## A complete HTTP header codec
+;; ---
+;; &nbsp;
+
+;; - Http values can be folded over several lines
+(def folded-buf
+  (to-byte-buffer (str
+                    "name: value\r\n"
+                    "name2:value2\r\n"
+                    " value3 \r\n"
+                    "\tvalue3a \r\n"
+                    "name3: value5 \r\n"
+                    "name2:value4\r\n\r\n")))
+
+;; - Where "\r\n " and "\r\n\t" should be parsed as " "
+(def unfolded-buf
+  (to-byte-buffer (str
+                    "name: value\r\n"
+                    "name2:value2 value3  value3a \r\n"
+                    "name3: value5 \r\n"
+                    "name2:value4 \r\n\r\n")))
+
+;; - And eventually decoded into this structure
+(def unfolded-data
+  {:name "value"
+   :name2 "value2 value3  value3a,value4"
+   :name3 "value5"})
+
+(def ^:const rn-space "\r\n ")
+(def ^:const rn-tab "\r\n\t")
+(def sp-buf (to-byte-buffer " "))
+(def rnrn-buf (to-byte-buffer rnrn))
+
+(defcodec part-unfold-codec
+  (repeated
+    (delimited-block [rn-space rn-tab rnrn] true)
+    :delimiters [rnrn]
+    :strip-delimiters? false))
+
+(defn unfold [bufs]
+  (if (= (first bufs) rnrn-buf)
+    bufs
+    (let [buf-seq (decode part-unfold-codec bufs)
+          seq-size (count buf-seq)]
+      (if (= seq-size 1)
+        bufs
+        (list (contiguous (interpose sp-buf (flatten (conj buf-seq rnrn-buf)))))))))
+
+(expect unfolded-buf (first (unfold (seq [folded-buf]))))
+
+;; <a id="complete-codec"></a>*the codec*
+;; ---
+
+;; A complete HTTP header codec
 (def folding-headers
-  (compile-frame
-    (repeated (string :utf-8 :delimiters [":" "\r\n" "\r\n\r\n"])
+  (compile-frame-ext
+    (repeated better-header
       :delimiters [rnrn]
       :strip-delimiters? false)
     #(identity %)
-    #(identity %)))
+    unfold
+    output-to-merged-map))
 
 (expect
-  ["name" "value" " value2"]
-  (decode folding-headers (to-byte-buffer (str
-                                           "name:value\r\n value2\r\n\r\n"))))
-
+  unfolded-data
+  (decode folding-headers folded-buf))
 
 (run-all-tests)
-
