@@ -3358,7 +3358,7 @@ repeated section, meaning the final written delimiter is wrong.</p>
   (to-byte-buffer &quot;name: value\r\nname2: value2\r\n\r\n\r\n&quot;)
   (contiguous (encode simple-headers initial-data)))</pre></td></tr><tr><td class="docs"><p>Gloss supports specifying an encoding delimiter for string frames, but not repeated sequences.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn specify-encoding-dlm [value]
-  &quot;\r\n&quot;)</pre></td></tr><tr><td class="docs"><p>Ideally gloss/repeated would allo an encoding-delimiter.</p>
+  &quot;\r\n&quot;)</pre></td></tr><tr><td class="docs"><p>Perhaps gloss/repeated should allow an encoding-delimiter.</p>
 </td><td class="codes"><pre class="brush: clojure">(def simple-headers-selective-dlm
   (compile-frame
     (repeated init-header
@@ -3381,16 +3381,17 @@ repeated section, meaning the final written delimiter is wrong.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec better-header
   [(string :utf-8 :delimiters [&quot;:&quot;]) (string :utf-8 :delimiters [rn rnrn])])</pre></td></tr><tr><td class="docs"><ul>
 <li>Repeated names combined into a single comma separated value.</li>
-<li>Names trimmed and lower-cased</li>
-<li>Values trimmed.</li>
+<li>Names normalized, case insensitive.</li>
 </ul>
 </td><td class="codes"><pre class="brush: clojure">(defn output-to-merged-map [data]
   (apply merge-with #(str %1 &quot;,&quot; %2)
-    (map (fn [[k v]] {(keyword (-&gt; k trim lower-case)) (trim v)}) data)))</pre></td></tr><tr><td class="docs">
+    (map (fn [[k v]] {(keyword (-&gt; k trim lower-case)) (trim v)}) data)))</pre></td></tr><tr><td class="docs"><ul>
+<li>Values trimmed.</li>
+</ul>
 </td><td class="codes"><pre class="brush: clojure">(expect
   {:name &quot;value&quot;
    :name2 &quot;value2,value3&quot;}
-  (output-to-merged-map [[&quot;name&quot; &quot;value&quot;] [&quot;name2&quot; &quot; value2&quot;] [&quot;name2&quot; &quot;value3 &quot;]]))</pre></td></tr><tr><td class="docs"><p><a id="better-codec"></a><em>the codec</em>
+  (output-to-merged-map [[&quot;name&quot; &quot;value&quot;] [&quot;NAME2&quot; &quot; value2&quot;] [&quot;name2&quot; &quot; value3 &quot;]]))</pre></td></tr><tr><td class="docs"><p><a id="better-codec"></a><em>the codec</em>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>A slightly better HTTP header codec</p>
 </td><td class="codes"><pre class="brush: clojure">(def better-headers
@@ -3416,9 +3417,8 @@ repeated section, meaning the final written delimiter is wrong.</p>
 
 <p><hr />
 &nbsp;</p>
-</td><td class="codes"></td></tr><tr><td class="docs"><ul>
-<li>Http values can be folded over several lines</li>
-</ul>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>In addition to the previous requirements:
+- Http values can be folded over several lines</p>
 </td><td class="codes"><pre class="brush: clojure">(def folded-buf
   (to-byte-buffer (str
                     &quot;name: value\r\n&quot;
@@ -3427,7 +3427,7 @@ repeated section, meaning the final written delimiter is wrong.</p>
                     &quot;\tvalue3a \r\n&quot;
                     &quot;name3: value5 \r\n&quot;
                     &quot;name2:value4\r\n\r\n&quot;)))</pre></td></tr><tr><td class="docs"><ul>
-<li>Where "\r\n " and "\r\n\t" should be parsed as " "</li>
+<li>Where "\r\n " and "\r\n\t" are parsed as " "</li>
 </ul>
 </td><td class="codes"><pre class="brush: clojure">(def unfolded-buf
   (to-byte-buffer (str
@@ -3444,12 +3444,12 @@ repeated section, meaning the final written delimiter is wrong.</p>
 </td><td class="codes"><pre class="brush: clojure">(def ^:const rn-space &quot;\r\n &quot;)
 (def ^:const rn-tab &quot;\r\n\t&quot;)
 (def sp-buf (to-byte-buffer &quot; &quot;))
-(def rnrn-buf (to-byte-buffer rnrn))</pre></td></tr><tr><td class="docs">
+(def rnrn-buf (to-byte-buffer rnrn))</pre></td></tr><tr><td class="docs"><p>To support folding, we transform our bytebuffer before decoding.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec part-unfold-codec
   (repeated
     (delimited-block [rn-space rn-tab rnrn] true)
     :delimiters [rnrn]
-    :strip-delimiters? false))</pre></td></tr><tr><td class="docs">
+    :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>Effectively replacing LWSP with SP.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn unfold [bufs]
   (if (= (first bufs) rnrn-buf)
     bufs
@@ -3458,9 +3458,10 @@ repeated section, meaning the final written delimiter is wrong.</p>
       (if (= seq-size 1)
         bufs
         (list (contiguous (interpose sp-buf (flatten (conj buf-seq rnrn-buf)))))))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(expect unfolded-buf (first (unfold (seq [folded-buf]))))</pre></td></tr><tr><td class="docs"><p><a id="complete-codec"></a><em>the codec</em>
+</td><td class="codes"><pre class="brush: clojure">(expect unfolded-buf (first (unfold (list folded-buf))))</pre></td></tr><tr><td class="docs"><p><a id="complete-codec"></a><em>the codec</em>
 <hr /></p>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>A complete HTTP header codec</p>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>A complete HTTP header codec, uses a Gloss extension that allows you to
+provide a method to modify the bytebuffer before decoding.</p>
 </td><td class="codes"><pre class="brush: clojure">(def folding-headers
   (compile-frame-ext
     (repeated better-header
@@ -3468,7 +3469,16 @@ repeated section, meaning the final written delimiter is wrong.</p>
       :strip-delimiters? false)
     #(identity %)
     unfold
-    output-to-merged-map))</pre></td></tr><tr><td class="docs">
+    output-to-merged-map))</pre></td></tr><tr><td class="docs"><p>My fairly unscientific benchmarking shows this codec to be about 10x slower
+than the current Http header decode in Netty 4 when parsing 100k v. complex
+(30+ headers, many folded) payloads.</p>
+
+<p>Transforming the buffer pre-decode to enable unfolding of header values seems
+to add about 10% overhead to throughput.</p>
+
+<p>I have put no effort into tuning, so clearly some performance advantages to
+be had, but I'm more concerned with defining a precise, re-useable codec, supporting
+both encoding and decoding, and working entirely with clojure data structures.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   unfolded-data
   (decode folding-headers folded-buf))</pre></td></tr><tr><td class="docs">

@@ -441,7 +441,7 @@
 (defn specify-encoding-dlm [value]
   "\r\n")
 
-;; Ideally gloss/repeated would allo an encoding-delimiter.
+;; Perhaps gloss/repeated should allow an encoding-delimiter.
 (def simple-headers-selective-dlm
   (compile-frame
     (repeated init-header
@@ -469,16 +469,16 @@
   [(string :utf-8 :delimiters [":"]) (string :utf-8 :delimiters [rn rnrn])])
 
 ;; - Repeated names combined into a single comma separated value.
-;; - Names trimmed and lower-cased
-;; - Values trimmed.
+;; - Names normalized, case insensitive.
 (defn output-to-merged-map [data]
   (apply merge-with #(str %1 "," %2)
     (map (fn [[k v]] {(keyword (-> k trim lower-case)) (trim v)}) data)))
 
+;; - Values trimmed.
 (expect
   {:name "value"
    :name2 "value2,value3"}
-  (output-to-merged-map [["name" "value"] ["name2" " value2"] ["name2" "value3 "]]))
+  (output-to-merged-map [["name" "value"] ["NAME2" " value2"] ["name2" " value3 "]]))
 
 ;; <a id="better-codec"></a>*the codec*
 ;; ---
@@ -513,6 +513,7 @@
 ;; ---
 ;; &nbsp;
 
+;; In addition to the previous requirements:
 ;; - Http values can be folded over several lines
 (def folded-buf
   (to-byte-buffer (str
@@ -523,7 +524,7 @@
                     "name3: value5 \r\n"
                     "name2:value4\r\n\r\n")))
 
-;; - Where "\r\n " and "\r\n\t" should be parsed as " "
+;; - Where "\r\n " and "\r\n\t" are parsed as " "
 (def unfolded-buf
   (to-byte-buffer (str
                     "name: value\r\n"
@@ -542,12 +543,14 @@
 (def sp-buf (to-byte-buffer " "))
 (def rnrn-buf (to-byte-buffer rnrn))
 
+;; To support folding, we transform our bytebuffer before decoding.
 (defcodec part-unfold-codec
   (repeated
     (delimited-block [rn-space rn-tab rnrn] true)
     :delimiters [rnrn]
     :strip-delimiters? false))
 
+;; Effectively replacing LWSP with SP.
 (defn unfold [bufs]
   (if (= (first bufs) rnrn-buf)
     bufs
@@ -557,12 +560,13 @@
         bufs
         (list (contiguous (interpose sp-buf (flatten (conj buf-seq rnrn-buf)))))))))
 
-(expect unfolded-buf (first (unfold (seq [folded-buf]))))
+(expect unfolded-buf (first (unfold (list folded-buf))))
 
 ;; <a id="complete-codec"></a>*the codec*
 ;; ---
 
-;; A complete HTTP header codec
+;; A complete HTTP header codec, uses a Gloss extension that allows you to
+;; provide a method to modify the bytebuffer before decoding.
 (def folding-headers
   (compile-frame-ext
     (repeated better-header
@@ -572,6 +576,16 @@
     unfold
     output-to-merged-map))
 
+;; My fairly unscientific benchmarking shows this codec to be about 10x slower
+;; than the current Http header decode in Netty 4 when parsing 100k v. complex
+;; (30+ headers, many folded) payloads.
+;;
+;; Transforming the buffer pre-decode to enable unfolding of header values seems
+;; to add about 10% overhead to throughput.
+;;
+;; I have put no effort into tuning, so clearly some performance advantages to
+;; be had, but I'm more concerned with defining a precise, re-useable codec, supporting
+;; both encoding and decoding, and working entirely with clojure data structures.
 (expect
   unfolded-data
   (decode folding-headers folded-buf))
