@@ -1,7 +1,7 @@
 ;; ## Content
 ;; ---
 ;;
-;; - ***the basics***
+;; - ***[the basics](#the-basics)***
 ;;     - [frames](#frames)
 ;;     - [codec](#codec)
 ;;     - [nesting codec](#nesting)
@@ -9,36 +9,36 @@
 ;;     - [repeated frames](#repeated)
 ;;     - [transforms](#transforms)
 ;;     - [headers](#headers)
-;;     - [delimited-block and identity-frame]
+;;     - [delimited-block and identity-frame](#gloss-extras)
 ;;     - [strict decoding](#decoding)
-;; - ***an initial HTTP header codec***
-;;     - [definition](#init-definition)
+;; - ***[an initial HTTP header codec](#initial-title)***
 ;;     - [transforms](#init-transforms)
 ;;     - [the codec](#init-codec)
 ;;     - [limitations](#init-limitations)
-;; - ***a better HTTP header codec***
+;; - ***[a better HTTP header codec](#better-title)***
 ;;     - [the codec](#better-codec)
-;; - ***a complete HTTP header codec***
+;; - ***[a complete HTTP header codec](#complete-title)***
 ;;     - [gloss extension](#gloss-extension)
 ;;     - [the codec](#complete-codec)
 
 ;; &nbsp;
+;; <a id="the-basics"></a>
 ;; ## The Basics
 ;; ---
 
 ;; ***Gloss is a DSL for describing byte formats.***
 ;;
-;; In Gloss, a byte format is called a *frame*, frames are compiled into *codec*, which allow you to:
+;; In Gloss a byte format is called a *frame*, frames are compiled into *codec*, which allow you to:
 ;;
 ;; - encode a data structure into a ByteBuffer<sup>1</sup>; or,
 ;; - decode a ByteBuffer into a data structure.
 ;;
-;; A frame is just a clojure data structure, that simple. That data structure might include other codec, meaning a
+;; A frame is just a clojure data structure. That data structure might include other codec, meaning a
 ;; complicated codec can be built from several smaller, simple codec.
 ;;
 ;; Defining codec by their composite parts allows testing (and transformation if needed) at a granular level.
 ;;
-;; <sup>1 technically Gloss encodes to a sequence of ByteBuffers</sup>
+;; <sup>1 technically Gloss encodes/decodes sequences of ByteBuffers</sup>
 (ns by-example-gloss.core
   (:require [clojure.string :refer [trim lower-case]]
             [clojure.walk :refer [keywordize-keys stringify-keys]]
@@ -48,17 +48,21 @@
             [gloss.core.protocols :refer [Reader Writer sizeof write-bytes read-bytes compose-callback]]
             [expectations :refer [expect run-all-tests]]))
 
-;; <a id="frames"></a>*frames*
+;; <a id="frames"></a>***frames***
 ;; ---
 
 ;; A frame can contain a number of different primitive data types.
-;;
-;; The examples below generally use :byte, consider that inter-changeable.
+
+;; The examples below use :byte, consider these inter-changeable.
 [:byte, :int16, :int32, :int64, :float32, :float64, :ubyte, :uint16, :uint32, :uint64 ]
 
 (def byte-frame
   "A very simple frame, a single byte."
   :byte )
+
+(def little-endian-int-frame
+  "Endian-ness can be declared by appending -le or -be."
+  :int32-le )
 
 (def vector-bytes-frame
   "Frames are just clojure data structures, this frame is a vector of two bytes."
@@ -70,11 +74,11 @@
    :second :byte})
 
 (def map-bytes-frame-with-constant
-  "Frames can have constant values which are not encoded, and always occur when decoded."
+  "Frames can contain constants which are not encoded, and are always decoded."
   {:first "constant-value"
    :second :byte})
 
-;; <a id="codec"></a>*codec*
+;; <a id="codec"></a>***codec***
 ;; ---
 
 (def byte-codec
@@ -126,7 +130,7 @@
    :second 127}
   (decode map-bytes-codec (to-byte-buffer '(126 127))))
 
-;; <a id="nesting"></a>*nesting codec*
+;; <a id="nesting"></a>***nesting codec***
 ;; ---
 
 ;; A codec can be defined as a data structure which contains other codec.
@@ -149,7 +153,7 @@
 
 ;; &nbsp;
 ;;
-;; <a id="strings"></a>*string frames*
+;; <a id="strings"></a>***string frames***
 ;; ---
 
 ;; Aside from these primitives, Gloss supports parsing streams of text.
@@ -158,10 +162,11 @@
 (defcodec unbound-codec
   (string :utf-8 ))
 
-;; Gloss provides for either fixed length or delimited text. We're going to focus solely on delimited.
+;; String can be declared with a certain length
+(defcodec fixed-length-string-codec
+  (string :utf-8 :length 50))
 
-;; This string is delimited by any of three character sequences. Any byte-sequence can be used
-;; as a delimiter.
+;; or as delimited. Any byte-sequence can be used as a delimiter.
 (defcodec string-codec
   (string :utf-8 :delimiters ["x" "xx" \y]))
 
@@ -225,7 +230,7 @@
   (to-byte-buffer "kirstyy")
   (contiguous (encode dlm-selective-codec "kirsty")))
 
-;; <a id="repeated"></a>*repeated frames*
+;; <a id="repeated"></a>***repeated frames***
 ;; ---
 
 ;; Gloss supports repeating frames.
@@ -284,7 +289,7 @@
 
 ;; &nbsp;
 ;;
-;; <a id="transforms"></a>*pre-encode and post-decode transforms*
+;; <a id="transforms"></a>***pre-encode and post-decode transforms***
 ;; ---
 
 ;; When compiling a frame, we can supply functions that:
@@ -314,7 +319,7 @@
   {:name "value"}
   (decode trans-codec (to-byte-buffer "name: value\n")))
 
-;; <a id="decoding"></a>*strict decoding*
+;; <a id="decoding"></a>***strict decoding***
 ;; ---
 
 ;; Gloss is strict by default, codec are required to consume all input bytes.
@@ -330,7 +335,7 @@
 ;; &nbsp;
 ;;
 ;;
-;;
+;; <a id="initial-title"></a>
 ;; ## An initial HTTP header codec
 ;; ---
 ;; &nbsp;
@@ -348,9 +353,6 @@
 ;; will encode/decode from/to this map structure
 (def initial-data {:name "value"
                    :name2 "value2"})
-
-;; <a id="init-definition"></a>*definition*
-;; ---
 
 ;; First, a codec which matches a single header, decoding:
 (defcodec init-header
@@ -378,15 +380,15 @@
     :delimiters [rnrn]
     :strip-delimiters? false))
 
-;; The buffer can be decoded into a vector.
+;; The initial buffer can be decoded into a vector.
 (expect
   [["name" "value"] ["name2" "value2"]]
   (decode initial-headers initial-buf))
 
-;; <a id="init-transforms"></a>*tranforms*
+;; <a id="init-transforms"></a>***tranforms***
 ;; ---
 
-;; A post-decode transform works our output into a more practical form.
+;; A post-decode transform works the output into a more practical form.
 (defn output-to-map [data]
   (keywordize-keys (into {} data)))
 
@@ -405,7 +407,7 @@
   (input-to-vector {:name "value"
                     :name2 "value2"}))
 
-;; <a id="init-codec"></a>*the codec*
+;; <a id="init-codec"></a>***the codec***
 ;; ---
 
 ;; A very basic HTTP header codec
@@ -422,10 +424,10 @@
   initial-data
   (decode simple-headers initial-buf))
 
-;; <a id="init-limitations"></a>*limitations*
+;; <a id="init-limitations"></a>***limitations***
 ;; ---
 
-;; Unfortunately encoding emits the delimiter of each header, and the delimiter of the
+;; Unfortunately encoding emits the delimiter of each header, and then the delimiter of the
 ;; repeated section, meaning the final written delimiter is wrong.
 (expect
   (to-byte-buffer "name: value\r\nname2: value2\r\n\r\n\r\n")
@@ -452,42 +454,42 @@
 ;; &nbsp;
 ;;
 ;;
-;;
+;; <a id="better-title"></a>
 ;; ## A slightly better HTTP header codec
 ;; ---
 ;; <sup>due to the limitations above, we're only concerned with decoding</sup>
 ;; &nbsp;
 
-;; - Dont require a space after the colon separator.
-;; - Repeated names combined into a single comma separated value.
-;; - Names normalized, case insensitive.
+;; - Same basic definition as the Initial Headers codec.
+;; - Combine repeated names into a single comma separated value.
+;; - Normalize names and values, trimmed and case insensitive.
 (def better-buf
   (to-byte-buffer (str
                     "name: value\r\n"
                     "name2:value2\r\n"
                     "NAME2:value3 \r\n"
-                    "name3: value5 \r\n"
-                    "name2:value4\r\n\r\n")))
+                    "name3 : VALUE5 \r\n"
+                    "name2 :value4\r\n\r\n")))
 
 (def better-data {:name "value"
                   :name2 "value2,value3,value4"
-                  :name3 "value5"})
+                  :name3 "VALUE5"})
 
+;; The header codec is similar to the initial one, but without the expectation of a space after the colon.
 (defcodec better-header
   [(string :utf-8 :delimiters [":"]) (string :utf-8 :delimiters [rn rnrn])])
 
-;; Post-decode transform applies most of our rules
+;; A post-decode transform method applies most of the rules described above.
 (defn output-to-merged-map [data]
   (apply merge-with #(str %1 "," %2)
     (map (fn [[k v]] {(keyword (-> k trim lower-case)) (trim v)}) data)))
 
-;; - Normalizes names, aggregates same headers and trims the values.
 (expect
   {:name "value"
    :name2 "value2,value3"}
   (output-to-merged-map [["name" "value"] ["NAME2" " value2"] ["name2" " value3 "]]))
 
-;; <a id="better-codec"></a>*the codec*
+;; <a id="better-codec"></a>***the codec***
 ;; ---
 
 ;; A slightly better HTTP header codec
@@ -508,13 +510,12 @@
 ;; &nbsp;
 ;;
 ;;
-;;
+;; <a id="complete-title"></a>
 ;; ## A complete HTTP header codec
 ;; ---
 ;; &nbsp;
 
-;; In addition to the previous requirements:
-;; - Http values can be folded over several lines
+;; In addition to previous requirements, values can be folded over several lines.
 (def folded-buf
   (to-byte-buffer (str
                     "name: value\r\n"
@@ -524,7 +525,8 @@
                     "name3: value5 \r\n"
                     "name2:value4\r\n\r\n")))
 
-;; - Where "\r\n " and "\r\n\t" are parsed as " "
+;; The buffer needs to be unfolded before it can be decoded, with "\r\n " or "\r\n\t" interpreted
+;; as a simple space character.
 (def unfolded-buf
   (to-byte-buffer (str
                     "name: value\r\n"
@@ -532,7 +534,7 @@
                     "name3: value5 \r\n"
                     "name2:value4 \r\n\r\n")))
 
-;; - And eventually decoded into this structure
+;; The folded buffer should eventually be decoded into this data structure.
 (def unfolded-data
   {:name "value"
    :name2 "value2 value3  value3a,value4"
@@ -543,18 +545,21 @@
 (def sp-buf (to-byte-buffer " "))
 (def rnrn-buf (to-byte-buffer rnrn))
 
-;; To support folding, we transform our ByteBuffer before decoding:
+;; This codec part-unfolds a ByteBuffer, removing all linear whitespace.
+;;
 ;; - ("ab\r\nc\r\n d\r\n\t e\r\nf\r\n\r\n")
-;; - Becomes ("ab\r\nc" "d" " e\r\nf")
+;; - becomes ("ab\r\nc" "d" " e\r\nf")
 (defcodec part-unfold-codec
   (repeated
     (delimited-block [rn-space rn-tab rnrn] true)
     :delimiters [rnrn]
     :strip-delimiters? false))
 
-;; Replace linear white space:
-;; - Decoded ("ab\r\nc" "d" " e\r\nf")
-;; - Becomes ("ab\r\nc" " " "d" " " " e\r\nf" "\r\n\r\n")
+;; This pre-decode transform method applies that codec, then interposes space
+;; characters to give the expected unfolded form.
+;;
+;; - codec output ("ab\r\nc" "d" " e\r\nf")
+;; - becomes ("ab\r\nc" " " "d" " " " e\r\nf" "\r\n\r\n")
 (defn unfold [bufs]
   (let [buf-seq (decode part-unfold-codec bufs)]
     (if (> (count buf-seq) 1)
@@ -563,18 +568,19 @@
 
 (expect unfolded-buf (first (unfold (list folded-buf))))
 
-;; <a id="gloss-ext"></a>*gloss extension*
+;; <a id="gloss-ext"></a>***gloss extension***
 ;; ---
 
-;; Rather than explicitly applying the transform to the buffer pre-decode, we
-;; extend compile-frame to take a pre-decode transform method.
 (defn- compile-frame- [f]
   (cond
     (map? f) (convert-map (zipmap (keys f) (map compile-frame- (vals f))))
     (sequential? f) (convert-sequence (map compile-frame- f))
     :else f))
 
-;; Now it is possible to create a codec which transforms the original buffer.
+;; Rather than explicitly applying the transform to the buffer pre-decode, an
+;; extended compile-frame takes a pre-decode argument.
+;;
+;; Now a codec can also tranform the incoming buffer.
 (defn compile-frame-ext
   ([frame pre-encoder pre-decoder post-decoder]
     (let [codec (compile-frame frame)
@@ -592,10 +598,10 @@
         (write-bytes [_ buf v]
           (write-bytes codec buf (pre-encoder v)))))))
 
-;; <a id="complete-codec"></a>*the codec*
+;; <a id="complete-codec"></a>***the codec***
 ;; ---
 
-;; A complete HTTP header codec, uses a Gloss extension that allows you to
+;; A complete HTTP header codec, using the Gloss extension that allows you to
 ;; provide a method to modify the ByteBuffer before decoding.
 (def folding-headers
   (compile-frame-ext
