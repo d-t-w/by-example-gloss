@@ -3029,7 +3029,7 @@ net.brehaut.ClojureTools = (function (SH) {
   };
 })(SyntaxHighlighter);
 </script><title>d-t-w.by-example-gloss -- Marginalia</title></head><body><table><tr><td class="docs"><div class="header"><h1 class="project-name">d-t-w.by-example-gloss</h1><h2 class="project-version">0.1</h2><br /><p>Encoding and Decoding Data Structures with Gloss</p>
-</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.5.1</td></tr><tr><td class="dep-name">gloss</td><td class="dotted"><hr /></td><td class="dep-version">0.2.2-rc1</td></tr><tr><td class="dep-name">expectations</td><td class="dotted"><hr /></td><td class="dep-version">1.4.53</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#by-example-gloss.core">by-example-gloss.core</a></li><li><a href="#by-example-gloss.ext">by-example-gloss.ext</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#by-example-gloss.core" name="by-example-gloss.core"><h1 class="project-name">by-example-gloss.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h2>Content</h2>
+</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.5.1</td></tr><tr><td class="dep-name">gloss</td><td class="dotted"><hr /></td><td class="dep-version">0.2.2-rc1</td></tr><tr><td class="dep-name">expectations</td><td class="dotted"><hr /></td><td class="dep-version">1.4.53</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#by-example-gloss.core">by-example-gloss.core</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#by-example-gloss.core" name="by-example-gloss.core"><h1 class="project-name">by-example-gloss.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h2>Content</h2>
 
 <hr />
 
@@ -3041,6 +3041,8 @@ net.brehaut.ClojureTools = (function (SH) {
 <li><a href="#strings">string frames</a></li>
 <li><a href="#repeated">repeated frames</a></li>
 <li><a href="#transforms">transforms</a></li>
+<li><a href="#headers">headers</a></li>
+<li>[delimited-block and identity-frame]</li>
 <li><a href="#decoding">strict decoding</a></li></ul></li>
 <li><strong><em>an initial HTTP header codec</em></strong>
 <ul><li><a href="#init-definition">definition</a></li>
@@ -3050,7 +3052,8 @@ net.brehaut.ClojureTools = (function (SH) {
 <li><strong><em>a better HTTP header codec</em></strong>
 <ul><li><a href="#better-codec">the codec</a></li></ul></li>
 <li><strong><em>a complete HTTP header codec</em></strong>
-<ul><li><a href="#complete-codec">the codec</a></li></ul></li>
+<ul><li><a href="#gloss-extension">gloss extension</a></li>
+<li><a href="#complete-codec">the codec</a></li></ul></li>
 </ul>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>&nbsp;</p>
 
@@ -3073,22 +3076,13 @@ complicated codec can be built from several smaller, simple codec.</p>
 
 <p><sup>1 technically Gloss encodes to a sequence of ByteBuffers</sup></p>
 </td><td class="codes"><pre class="brush: clojure">(ns by-example-gloss.core
-  (:require [clojure.string :refer [trim
-                                    lower-case]]
-            [clojure.walk :refer [keywordize-keys
-                                  stringify-keys]]
-            [by-example-gloss.ext :refer [compile-frame-ext]]
-            [gloss.core :refer [compile-frame
-                                defcodec header
-                                string
-                                repeated
-                                delimited-block]]
-            [gloss.io :refer [encode
-                              decode
-                              to-byte-buffer
-                              contiguous]]
-            [expectations :refer [expect
-                                  run-all-tests]]))</pre></td></tr><tr><td class="docs"><p><a id="frames"></a><em>frames</em>
+  (:require [clojure.string :refer [trim lower-case]]
+            [clojure.walk :refer [keywordize-keys stringify-keys]]
+            [gloss.core :refer [compile-frame defcodec header string repeated delimited-block]]
+            [gloss.io :refer [encode decode to-byte-buffer contiguous]]
+            [gloss.core.structure :refer [compile-frame convert-map convert-sequence]]
+            [gloss.core.protocols :refer [Reader Writer sizeof write-bytes read-bytes compose-callback]]
+            [expectations :refer [expect run-all-tests]]))</pre></td></tr><tr><td class="docs"><p><a id="frames"></a><em>frames</em>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>A frame can contain a number of different primitive data types.</p>
 
@@ -3297,7 +3291,7 @@ for consumption. All bytes must be consumed or an exception is thrown.</p>
 </ul>
 </td><td class="codes"><pre class="brush: clojure">(def ^:const rn &quot;\r\n&quot;)
 (def ^:const rnrn &quot;\r\n\r\n&quot;)</pre></td></tr><tr><td class="docs"><p>A buffer with this text value</p>
-</td><td class="codes"><pre class="brush: clojure">(def initial-buffer (to-byte-buffer &quot;name: value\r\nname2: value2\r\n\r\n&quot;))</pre></td></tr><tr><td class="docs"><p>will encode/decode from/to this map structure</p>
+</td><td class="codes"><pre class="brush: clojure">(def initial-buf (to-byte-buffer &quot;name: value\r\nname2: value2\r\n\r\n&quot;))</pre></td></tr><tr><td class="docs"><p>will encode/decode from/to this map structure</p>
 </td><td class="codes"><pre class="brush: clojure">(def initial-data {:name &quot;value&quot;
                    :name2 &quot;value2&quot;})</pre></td></tr><tr><td class="docs"><p><a id="init-definition"></a><em>definition</em>
 <hr /></p>
@@ -3313,7 +3307,7 @@ for consumption. All bytes must be consumed or an exception is thrown.</p>
 </ul>
 </td><td class="codes"><pre class="brush: clojure">(expect
   [&quot;name&quot; &quot;value&quot;]
-  (decode init-header (to-byte-buffer &quot;name: value\r\n\r\n&quot;)))</pre></td></tr><tr><td class="docs"><p>and encoding the data back to the intial buffer.</p>
+  (decode init-header (to-byte-buffer &quot;name: value\r\n\r\n&quot;)))</pre></td></tr><tr><td class="docs"><p>and encoding the data back to the initial buffer.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   (to-byte-buffer &quot;name: value\r\n&quot;)
   (contiguous (encode init-header [&quot;name&quot; &quot;value&quot;])))</pre></td></tr><tr><td class="docs"><p>That header codec can be repeated. The repeated section leaves its delimiter in the matched bytes to be consumed
@@ -3324,7 +3318,7 @@ by the internal, repeated headers.</p>
     :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>The buffer can be decoded into a vector.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   [[&quot;name&quot; &quot;value&quot;] [&quot;name2&quot; &quot;value2&quot;]]
-  (decode initial-headers initial-buffer))</pre></td></tr><tr><td class="docs"><p><a id="init-transforms"></a><em>tranforms</em>
+  (decode initial-headers initial-buf))</pre></td></tr><tr><td class="docs"><p><a id="init-transforms"></a><em>tranforms</em>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>A post-decode transform works our output into a more practical form.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn output-to-map [data]
@@ -3350,7 +3344,7 @@ by the internal, repeated headers.</p>
     output-to-map))</pre></td></tr><tr><td class="docs"><p>Decodes the sample data in a map correctly</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   initial-data
-  (decode simple-headers initial-buffer))</pre></td></tr><tr><td class="docs"><p><a id="init-limitations"></a><em>limitations</em>
+  (decode simple-headers initial-buf))</pre></td></tr><tr><td class="docs"><p><a id="init-limitations"></a><em>limitations</em>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Unfortunately encoding emits the delimiter of each header, and the delimiter of the
 repeated section, meaning the final written delimiter is wrong.</p>
@@ -3377,16 +3371,25 @@ repeated section, meaning the final written delimiter is wrong.</p>
 &nbsp;</p>
 </td><td class="codes"></td></tr><tr><td class="docs"><ul>
 <li>Dont require a space after the colon separator.</li>
-</ul>
-</td><td class="codes"><pre class="brush: clojure">(defcodec better-header
-  [(string :utf-8 :delimiters [&quot;:&quot;]) (string :utf-8 :delimiters [rn rnrn])])</pre></td></tr><tr><td class="docs"><ul>
 <li>Repeated names combined into a single comma separated value.</li>
 <li>Names normalized, case insensitive.</li>
 </ul>
+</td><td class="codes"><pre class="brush: clojure">(def better-buf
+  (to-byte-buffer (str
+                    &quot;name: value\r\n&quot;
+                    &quot;name2:value2\r\n&quot;
+                    &quot;NAME2:value3 \r\n&quot;
+                    &quot;name3: value5 \r\n&quot;
+                    &quot;name2:value4\r\n\r\n&quot;)))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def better-data {:name &quot;value&quot;
+                  :name2 &quot;value2,value3,value4&quot;
+                  :name3 &quot;value5&quot;})</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defcodec better-header
+  [(string :utf-8 :delimiters [&quot;:&quot;]) (string :utf-8 :delimiters [rn rnrn])])</pre></td></tr><tr><td class="docs"><p>Post-decode transform applies most of our rules</p>
 </td><td class="codes"><pre class="brush: clojure">(defn output-to-merged-map [data]
   (apply merge-with #(str %1 &quot;,&quot; %2)
     (map (fn [[k v]] {(keyword (-&gt; k trim lower-case)) (trim v)}) data)))</pre></td></tr><tr><td class="docs"><ul>
-<li>Values trimmed.</li>
+<li>Normalizes names, aggregates same headers and trims the values.</li>
 </ul>
 </td><td class="codes"><pre class="brush: clojure">(expect
   {:name &quot;value&quot;
@@ -3402,16 +3405,9 @@ repeated section, meaning the final written delimiter is wrong.</p>
     #(identity %)
     output-to-merged-map))</pre></td></tr><tr><td class="docs"><p>provides better HTTP header extraction.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
-  {:name &quot;value&quot;
-   :name2 &quot;value2,value3,value4&quot;
-   :name3 &quot;value5&quot;}
+  better-data
   (decode better-headers
-    (to-byte-buffer (str
-                      &quot;name: value\r\n&quot;
-                      &quot;name2:value2\r\n&quot;
-                      &quot;name2:value3 \r\n&quot;
-                      &quot;name3: value5 \r\n&quot;
-                      &quot;name2:value4\r\n\r\n&quot;))))</pre></td></tr><tr><td class="docs"><p>&nbsp;</p>
+    (to-byte-buffer better-buf)))</pre></td></tr><tr><td class="docs"><p>&nbsp;</p>
 
 <h2>A complete HTTP header codec</h2>
 
@@ -3444,58 +3440,30 @@ repeated section, meaning the final written delimiter is wrong.</p>
 </td><td class="codes"><pre class="brush: clojure">(def ^:const rn-space &quot;\r\n &quot;)
 (def ^:const rn-tab &quot;\r\n\t&quot;)
 (def sp-buf (to-byte-buffer &quot; &quot;))
-(def rnrn-buf (to-byte-buffer rnrn))</pre></td></tr><tr><td class="docs"><p>To support folding, we transform our bytebuffer before decoding.</p>
+(def rnrn-buf (to-byte-buffer rnrn))</pre></td></tr><tr><td class="docs"><p>To support folding, we transform our ByteBuffer before decoding:
+- ("ab\r\nc\r\n d\r\n\t e\r\nf\r\n\r\n")
+- Becomes ("ab\r\nc" "d" " e\r\nf")</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec part-unfold-codec
   (repeated
     (delimited-block [rn-space rn-tab rnrn] true)
     :delimiters [rnrn]
-    :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>Effectively replacing LWSP with SP.</p>
+    :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>Replace linear white space:
+- Decoded ("ab\r\nc" "d" " e\r\nf")
+- Becomes ("ab\r\nc" " " "d" " " " e\r\nf" "\r\n\r\n")</p>
 </td><td class="codes"><pre class="brush: clojure">(defn unfold [bufs]
-  (if (= (first bufs) rnrn-buf)
-    bufs
-    (let [buf-seq (decode part-unfold-codec bufs)
-          seq-size (count buf-seq)]
-      (if (= seq-size 1)
-        bufs
-        (list (contiguous (interpose sp-buf (flatten (conj buf-seq rnrn-buf)))))))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(expect unfolded-buf (first (unfold (list folded-buf))))</pre></td></tr><tr><td class="docs"><p><a id="complete-codec"></a><em>the codec</em>
+  (let [buf-seq (decode part-unfold-codec bufs)]
+    (if (&gt; (count buf-seq) 1)
+      (list (contiguous (interpose sp-buf (flatten (conj buf-seq rnrn-buf)))))
+      bufs)))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(expect unfolded-buf (first (unfold (list folded-buf))))</pre></td></tr><tr><td class="docs"><p><a id="gloss-ext"></a><em>gloss extension</em>
 <hr /></p>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>A complete HTTP header codec, uses a Gloss extension that allows you to
-provide a method to modify the bytebuffer before decoding.</p>
-</td><td class="codes"><pre class="brush: clojure">(def folding-headers
-  (compile-frame-ext
-    (repeated better-header
-      :delimiters [rnrn]
-      :strip-delimiters? false)
-    #(identity %)
-    unfold
-    output-to-merged-map))</pre></td></tr><tr><td class="docs"><p>My fairly unscientific benchmarking shows this codec to be about 10x slower
-than the current Http header decode in Netty 4 when parsing 100k v. complex
-(30+ headers, many folded) payloads.</p>
-
-<p>Transforming the buffer pre-decode to enable unfolding of header values seems
-to add about 10% overhead to throughput.</p>
-
-<p>I have put no effort into tuning, so clearly some performance advantages to
-be had, but I'm more concerned with defining a precise, re-useable codec, supporting
-both encoding and decoding, and working entirely with clojure data structures.</p>
-</td><td class="codes"><pre class="brush: clojure">(expect
-  unfolded-data
-  (decode folding-headers folded-buf))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(run-all-tests)</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#by-example-gloss.ext" name="by-example-gloss.ext"><h1 class="project-name">by-example-gloss.ext</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h2>Gloss Extensions</h2>
-</td><td class="codes"><pre class="brush: clojure">(ns by-example-gloss.ext
-  (:use [gloss.core.structure]
-        [clojure.walk]
-        [gloss.core protocols]
-        [gloss.data primitives bytes])
-  (:require [clojure.zip :as z])
-  (:import [java.nio
-            ByteBuffer]))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Rather than explicitly applying the transform to the buffer pre-decode, we
+extend compile-frame to take a pre-decode transform method.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn- compile-frame- [f]
   (cond
     (map? f) (convert-map (zipmap (keys f) (map compile-frame- (vals f))))
     (sequential? f) (convert-sequence (map compile-frame- f))
-    :else f))</pre></td></tr><tr><td class="docs"><p>Allow a pre-decoder method when compiling a codec.</p>
+    :else f))</pre></td></tr><tr><td class="docs"><p>Now it is possible to create a codec which transforms the original buffer.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn compile-frame-ext
   ([frame pre-encoder pre-decoder post-decoder]
     (let [codec (compile-frame frame)
@@ -3511,5 +3479,36 @@ both encoding and decoding, and working entirely with clojure data structures.</
         (sizeof [_]
           (sizeof codec))
         (write-bytes [_ buf v]
-          (write-bytes codec buf (pre-encoder v)))))))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr></table><div class="footer">Generated by <a href="https://github.com/fogus/marginalia">Marginalia</a>.&nbsp;&nbsp;Syntax highlighting provided by Alex Gorbatchev's <a href="http://alexgorbatchev.com/SyntaxHighlighter/">SyntaxHighlighter</a></div><script type="text/javascript">SyntaxHighlighter.defaults['gutter'] = false;
+          (write-bytes codec buf (pre-encoder v)))))))</pre></td></tr><tr><td class="docs"><p><a id="complete-codec"></a><em>the codec</em>
+<hr /></p>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>A complete HTTP header codec, uses a Gloss extension that allows you to
+provide a method to modify the ByteBuffer before decoding.</p>
+</td><td class="codes"><pre class="brush: clojure">(def folding-headers
+  (compile-frame-ext
+    (repeated better-header
+      :delimiters [rnrn]
+      :strip-delimiters? false)
+    #(identity %)
+    unfold
+    output-to-merged-map))</pre></td></tr><tr><td class="docs"><p>My fairly unscientific benchmarking shows this codec to be about 10x slower
+than the current Http header decode in Netty 4 when parsing 100k v. complex
+(30+ headers, many folded) payloads.</p>
+</td><td class="codes"><pre class="brush: clojure">(expect
+  unfolded-data
+  (decode folding-headers folded-buf))</pre></td></tr><tr><td class="docs"><p>Transforming the buffer pre-decode to enable unfolding of header values seems
+to add about 10% overhead to throughput, so isn't the performance vector that
+causes the 10x difference w/ Netty parsing.</p>
+</td><td class="codes"><pre class="brush: clojure">(expect
+  better-data
+  (decode folding-headers better-buf))</pre></td></tr><tr><td class="docs"><p>I have put no effort into tuning, so surely some performance advantages to
+be had. I'm more concerned with understanding whether Gloss is flexible enough
+to handle different types of formats, having a concise codec which could both
+encode/decode, and dealing only with Clojure data structures.</p>
+</td><td class="codes"><pre class="brush: clojure">(expect
+  initial-data
+  (decode folding-headers initial-buf))</pre></td></tr><tr><td class="docs"><p>Empty sets of headers not supported</p>
+</td><td class="codes"><pre class="brush: clojure">(expect
+  Exception
+  (decode folding-headers (to-byte-buffer &quot;\r\n\r\n&quot;)))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(run-all-tests)</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr></table><div class="footer">Generated by <a href="https://github.com/fogus/marginalia">Marginalia</a>.&nbsp;&nbsp;Syntax highlighting provided by Alex Gorbatchev's <a href="http://alexgorbatchev.com/SyntaxHighlighter/">SyntaxHighlighter</a></div><script type="text/javascript">SyntaxHighlighter.defaults['gutter'] = false;
        SyntaxHighlighter.all()</script></body></html>

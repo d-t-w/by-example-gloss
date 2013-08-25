@@ -8,6 +8,8 @@
 ;;     - [string frames](#strings)
 ;;     - [repeated frames](#repeated)
 ;;     - [transforms](#transforms)
+;;     - [headers](#headers)
+;;     - [delimited-block and identity-frame]
 ;;     - [strict decoding](#decoding)
 ;; - ***an initial HTTP header codec***
 ;;     - [definition](#init-definition)
@@ -17,6 +19,7 @@
 ;; - ***a better HTTP header codec***
 ;;     - [the codec](#better-codec)
 ;; - ***a complete HTTP header codec***
+;;     - [gloss extension](#gloss-extension)
 ;;     - [the codec](#complete-codec)
 
 ;; &nbsp;
@@ -37,22 +40,13 @@
 ;;
 ;; <sup>1 technically Gloss encodes to a sequence of ByteBuffers</sup>
 (ns by-example-gloss.core
-  (:require [clojure.string :refer [trim
-                                    lower-case]]
-            [clojure.walk :refer [keywordize-keys
-                                  stringify-keys]]
-            [by-example-gloss.ext :refer [compile-frame-ext]]
-            [gloss.core :refer [compile-frame
-                                defcodec header
-                                string
-                                repeated
-                                delimited-block]]
-            [gloss.io :refer [encode
-                              decode
-                              to-byte-buffer
-                              contiguous]]
-            [expectations :refer [expect
-                                  run-all-tests]]))
+  (:require [clojure.string :refer [trim lower-case]]
+            [clojure.walk :refer [keywordize-keys stringify-keys]]
+            [gloss.core :refer [compile-frame defcodec header string repeated delimited-block]]
+            [gloss.io :refer [encode decode to-byte-buffer contiguous]]
+            [gloss.core.structure :refer [convert-map convert-sequence]]
+            [gloss.core.protocols :refer [Reader Writer sizeof write-bytes read-bytes compose-callback]]
+            [expectations :refer [expect run-all-tests]]))
 
 ;; <a id="frames"></a>*frames*
 ;; ---
@@ -349,7 +343,7 @@
 (def ^:const rnrn "\r\n\r\n")
 
 ;; A buffer with this text value
-(def initial-buffer (to-byte-buffer "name: value\r\nname2: value2\r\n\r\n"))
+(def initial-buf (to-byte-buffer "name: value\r\nname2: value2\r\n\r\n"))
 
 ;; will encode/decode from/to this map structure
 (def initial-data {:name "value"
@@ -372,7 +366,7 @@
   ["name" "value"]
   (decode init-header (to-byte-buffer "name: value\r\n\r\n")))
 
-;; and encoding the data back to the intial buffer.
+;; and encoding the data back to the initial buffer.
 (expect
   (to-byte-buffer "name: value\r\n")
   (contiguous (encode init-header ["name" "value"])))
@@ -387,7 +381,7 @@
 ;; The buffer can be decoded into a vector.
 (expect
   [["name" "value"] ["name2" "value2"]]
-  (decode initial-headers initial-buffer))
+  (decode initial-headers initial-buf))
 
 ;; <a id="init-transforms"></a>*tranforms*
 ;; ---
@@ -426,7 +420,7 @@
 ;; Decodes the sample data in a map correctly
 (expect
   initial-data
-  (decode simple-headers initial-buffer))
+  (decode simple-headers initial-buf))
 
 ;; <a id="init-limitations"></a>*limitations*
 ;; ---
@@ -465,16 +459,29 @@
 ;; &nbsp;
 
 ;; - Dont require a space after the colon separator.
+;; - Repeated names combined into a single comma separated value.
+;; - Names normalized, case insensitive.
+(def better-buf
+  (to-byte-buffer (str
+                    "name: value\r\n"
+                    "name2:value2\r\n"
+                    "NAME2:value3 \r\n"
+                    "name3: value5 \r\n"
+                    "name2:value4\r\n\r\n")))
+
+(def better-data {:name "value"
+                  :name2 "value2,value3,value4"
+                  :name3 "value5"})
+
 (defcodec better-header
   [(string :utf-8 :delimiters [":"]) (string :utf-8 :delimiters [rn rnrn])])
 
-;; - Repeated names combined into a single comma separated value.
-;; - Names normalized, case insensitive.
+;; Post-decode transform applies most of our rules
 (defn output-to-merged-map [data]
   (apply merge-with #(str %1 "," %2)
     (map (fn [[k v]] {(keyword (-> k trim lower-case)) (trim v)}) data)))
 
-;; - Values trimmed.
+;; - Normalizes names, aggregates same headers and trims the values.
 (expect
   {:name "value"
    :name2 "value2,value3"}
@@ -494,16 +501,9 @@
 
 ;; provides better HTTP header extraction.
 (expect
-  {:name "value"
-   :name2 "value2,value3,value4"
-   :name3 "value5"}
+  better-data
   (decode better-headers
-    (to-byte-buffer (str
-                      "name: value\r\n"
-                      "name2:value2\r\n"
-                      "name2:value3 \r\n"
-                      "name3: value5 \r\n"
-                      "name2:value4\r\n\r\n"))))
+    (to-byte-buffer better-buf)))
 
 ;; &nbsp;
 ;;
@@ -543,30 +543,60 @@
 (def sp-buf (to-byte-buffer " "))
 (def rnrn-buf (to-byte-buffer rnrn))
 
-;; To support folding, we transform our bytebuffer before decoding.
+;; To support folding, we transform our ByteBuffer before decoding:
+;; - ("ab\r\nc\r\n d\r\n\t e\r\nf\r\n\r\n")
+;; - Becomes ("ab\r\nc" "d" " e\r\nf")
 (defcodec part-unfold-codec
   (repeated
     (delimited-block [rn-space rn-tab rnrn] true)
     :delimiters [rnrn]
     :strip-delimiters? false))
 
-;; Effectively replacing LWSP with SP.
+;; Replace linear white space:
+;; - Decoded ("ab\r\nc" "d" " e\r\nf")
+;; - Becomes ("ab\r\nc" " " "d" " " " e\r\nf" "\r\n\r\n")
 (defn unfold [bufs]
-  (if (= (first bufs) rnrn-buf)
-    bufs
-    (let [buf-seq (decode part-unfold-codec bufs)
-          seq-size (count buf-seq)]
-      (if (= seq-size 1)
-        bufs
-        (list (contiguous (interpose sp-buf (flatten (conj buf-seq rnrn-buf)))))))))
+  (let [buf-seq (decode part-unfold-codec bufs)]
+    (if (> (count buf-seq) 1)
+      (list (contiguous (interpose sp-buf (flatten (conj buf-seq rnrn-buf)))))
+      bufs)))
 
 (expect unfolded-buf (first (unfold (list folded-buf))))
+
+;; <a id="gloss-ext"></a>*gloss extension*
+;; ---
+
+;; Rather than explicitly applying the transform to the buffer pre-decode, we
+;; extend compile-frame to take a pre-decode transform method.
+(defn- compile-frame- [f]
+  (cond
+    (map? f) (convert-map (zipmap (keys f) (map compile-frame- (vals f))))
+    (sequential? f) (convert-sequence (map compile-frame- f))
+    :else f))
+
+;; Now it is possible to create a codec which transforms the original buffer.
+(defn compile-frame-ext
+  ([frame pre-encoder pre-decoder post-decoder]
+    (let [codec (compile-frame frame)
+          read-codec (compose-callback
+                       codec
+                       (fn [x b]
+                         [true (post-decoder x) b]))]
+      (reify
+        Reader
+        (read-bytes [_ b]
+          (read-bytes read-codec (pre-decoder b)))
+        Writer
+        (sizeof [_]
+          (sizeof codec))
+        (write-bytes [_ buf v]
+          (write-bytes codec buf (pre-encoder v)))))))
 
 ;; <a id="complete-codec"></a>*the codec*
 ;; ---
 
 ;; A complete HTTP header codec, uses a Gloss extension that allows you to
-;; provide a method to modify the bytebuffer before decoding.
+;; provide a method to modify the ByteBuffer before decoding.
 (def folding-headers
   (compile-frame-ext
     (repeated better-header
@@ -579,15 +609,28 @@
 ;; My fairly unscientific benchmarking shows this codec to be about 10x slower
 ;; than the current Http header decode in Netty 4 when parsing 100k v. complex
 ;; (30+ headers, many folded) payloads.
-;;
-;; Transforming the buffer pre-decode to enable unfolding of header values seems
-;; to add about 10% overhead to throughput.
-;;
-;; I have put no effort into tuning, so clearly some performance advantages to
-;; be had, but I'm more concerned with defining a precise, re-useable codec, supporting
-;; both encoding and decoding, and working entirely with clojure data structures.
 (expect
   unfolded-data
   (decode folding-headers folded-buf))
+
+;; Transforming the buffer pre-decode to enable unfolding of header values seems
+;; to add about 10% overhead to throughput, so isn't the performance vector that
+;; causes the 10x difference w/ Netty parsing.
+(expect
+  better-data
+  (decode folding-headers better-buf))
+
+;; I have put no effort into tuning, so surely some performance advantages to
+;; be had. I'm more concerned with understanding whether Gloss is flexible enough
+;; to handle different types of formats, having a concise codec which could both
+;; encode/decode, and dealing only with Clojure data structures.
+(expect
+  initial-data
+  (decode folding-headers initial-buf))
+
+;; Empty sets of headers not supported
+(expect
+  Exception
+  (decode folding-headers (to-byte-buffer "\r\n\r\n")))
 
 (run-all-tests)
