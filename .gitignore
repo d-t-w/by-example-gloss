@@ -10,4 +10,4 @@ pom.xml.asc
 .lein-plugins
 .lein-repl-history
 .idea
-*.iml
+/by-example-gloss.iml

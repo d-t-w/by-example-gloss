@@ -626,7 +626,7 @@
   better-data
   (decode folding-headers better-buf))
 
-;; I have put no effort into tuning, so surely some performance advantages to
+;; I haven't tuned at all, so surely some performance advantages to
 ;; be had. I'm more concerned with understanding whether Gloss is flexible enough
 ;; to handle different types of formats, having a concise codec which could both
 ;; encode/decode, and dealing only with Clojure data structures.
