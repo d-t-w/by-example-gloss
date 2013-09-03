@@ -3498,9 +3498,9 @@ provide a method to modify the ByteBuffer before decoding.</p>
       :strip-delimiters? false)
     #(identity %)
     unfold
-    output-to-merged-map))</pre></td></tr><tr><td class="docs"><p>My fairly unscientific benchmarking shows this codec to be about 10x slower
-than the current Http header decode in Netty 4 when parsing 100k v. complex
-(30+ headers, many folded) payloads.</p>
+    output-to-merged-map))</pre></td></tr><tr><td class="docs"><p>I ran some basic benchmarks that show this codec to be about 10x slower
+than the current Http header decode in Netty 4, when parsing 100k v. complex
+(30+, many folded) headers.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   unfolded-data
   (decode folding-headers folded-buf))</pre></td></tr><tr><td class="docs"><p>Transforming the buffer pre-decode to enable unfolding of header values seems
@@ -3508,7 +3508,7 @@ to add about 10% overhead to throughput, so isn't the performance vector that
 causes the 10x difference w/ Netty parsing.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   better-data
-  (decode folding-headers better-buf))</pre></td></tr><tr><td class="docs"><p>I have put no effort into tuning, so surely some performance advantages to
+  (decode folding-headers better-buf))</pre></td></tr><tr><td class="docs"><p>I haven't tuned at all, so surely some performance advantages to
 be had. I'm more concerned with understanding whether Gloss is flexible enough
 to handle different types of formats, having a concise codec which could both
 encode/decode, and dealing only with Clojure data structures.</p>

@@ -612,9 +612,9 @@
     unfold
     output-to-merged-map))
 
-;; My fairly unscientific benchmarking shows this codec to be about 10x slower
-;; than the current Http header decode in Netty 4 when parsing 100k v. complex
-;; (30+ headers, many folded) payloads.
+;; I ran some basic benchmarks that show this codec to be about 10x slower
+;; than the current Http header decode in Netty 4, when parsing 100k v. complex
+;; (30+, many folded) headers.
 (expect
   unfolded-data
   (decode folding-headers folded-buf))
