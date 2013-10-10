@@ -1,7 +1,7 @@
 ;; ## Content
 ;; ---
 ;;
-;; - ***[the basics](#the-basics)***
+;; - **[the basics](#the-basics)**
 ;;     - [frames](#frames)
 ;;     - [codec](#codec)
 ;;     - [nesting codec](#nesting)
@@ -11,13 +11,13 @@
 ;;     - [headers](#headers)
 ;;     - [delimited-block and identity-frame](#gloss-extras)
 ;;     - [strict decoding](#decoding)
-;; - ***[an initial HTTP header codec](#initial-title)***
+;; - **[an initial HTTP header codec](#initial-title)**
 ;;     - [transforms](#init-transforms)
 ;;     - [the codec](#init-codec)
 ;;     - [limitations](#init-limitations)
-;; - ***[a better HTTP header codec](#better-title)***
+;; - **[a better HTTP header codec](#better-title)**
 ;;     - [the codec](#better-codec)
-;; - ***[a complete HTTP header codec](#complete-title)***
+;; - **[a complete HTTP header codec](#complete-title)**
 ;;     - [gloss extension](#gloss-extension)
 ;;     - [the codec](#complete-codec)
 
@@ -26,6 +26,19 @@
 ;; ## The Basics
 ;; ---
 
+;; Recently I've spent my time building systems which rely on the ability to interpret data as quickly
+;; as possible, with little overhead, and if possible in a way that leans to extensibility.
+;;
+;; These systems are predominantly Netty based network services, so I've become more familiar
+;; with bytes and buffers. However, working a ByteBuffer into something meaningful in Java is not
+;; a task for the faint-hearted.
+;;
+;; That's where Gloss comes in. I've found it particularly useful for describing byte-structures and
+;; then encoding and decoding those structures, and it performs well enough for my current needs.
+;;
+;; Here follows an example demonstrating many of the currently documented facets of Gloss, a
+;; few undocumented, and one mad extension.
+;;
 ;; ***Gloss is a DSL for describing byte formats.***
 ;;
 ;; In Gloss a byte format is called a *frame*, frames are compiled into *codec*, which allow you to:
@@ -54,19 +67,19 @@
 ;; A frame can contain a number of different primitive data types.
 
 ;; The examples below use :byte, consider these inter-changeable.
-[:byte, :int16, :int32, :int64, :float32, :float64, :ubyte, :uint16, :uint32, :uint64 ]
+[:byte, :int16, :int32, :int64, :float32, :float64, :ubyte, :uint16, :uint32, :uint64]
 
 (def byte-frame
   "A very simple frame, a single byte."
-  :byte )
+  :byte)
 
 (def little-endian-int-frame
   "Endian-ness can be declared by appending -le or -be."
-  :int32-le )
+  :int32-le)
 
 (def vector-bytes-frame
   "Frames are just clojure data structures, this frame is a vector of two bytes."
-  [:byte :byte ])
+  [:byte :byte])
 
 (def map-bytes-frame
   "This frame contains the same data, but in map form rather than a vector."
@@ -100,7 +113,7 @@
 
 ;; Gloss provides a codec defining macro, defcodec.
 (defcodec vector-bytes-codec
-  vector-bytes-frame)
+          vector-bytes-frame)
 
 ;; A vector encoded into a buffer
 (expect
@@ -114,8 +127,8 @@
 
 ;; Rinse and repeat with the map-bytes-codec.
 (defcodec map-bytes-codec
-  {:first :byte
-   :second :byte})
+          {:first :byte
+           :second :byte})
 
 ;; Gloss encodes map values in a consistent but arbitrary order. In this example the bytes could have
 ;; been written as '(127 126)
@@ -135,7 +148,7 @@
 
 ;; A codec can be defined as a data structure which contains other codec.
 (defcodec nested-codec
-  [vector-bytes-codec {:foo "bar"} byte-frame map-bytes-codec])
+          [vector-bytes-codec {:foo "bar"} byte-frame map-bytes-codec])
 
 ;; Meaning more complex codec can be built from simpler parts.
 (expect (to-byte-buffer '(123 124 125 126 127)) (first (encode nested-codec [[123 124]
@@ -160,15 +173,15 @@
 
 ;; The first argument specifies a character encoding.
 (defcodec unbound-codec
-  (string :utf-8 ))
+          (string :utf-8))
 
 ;; String can be declared with a certain length
 (defcodec fixed-length-string-codec
-  (string :utf-8 :length 50))
+          (string :utf-8 :length 50))
 
 ;; or as delimited. Any byte-sequence can be used as a delimiter.
 (defcodec string-codec
-  (string :utf-8 :delimiters ["x" "xx" \y]))
+          (string :utf-8 :delimiters ["x" "xx" \y]))
 
 ;; When applied to a buffer, the text prior to the delimiter is extracted.
 (expect
@@ -185,7 +198,7 @@
 
 ;;     :strip-delimiters? false
 (defcodec dlm-inclusive-codec
-  (string :utf-8 :delimiters ["x" "xx" \y] :strip-delimiters? false))
+          (string :utf-8 :delimiters ["x" "xx" \y] :strip-delimiters? false))
 
 (expect
   "derekx"
@@ -217,7 +230,7 @@
 
 ;; provide a function via the :value->delimiter argument.
 (defcodec dlm-selective-codec
-  (string :utf-8 :delimiters ["x" "xx" \y] :value->delimiter choose-encoded-dlm))
+          (string :utf-8 :delimiters ["x" "xx" \y] :value->delimiter choose-encoded-dlm))
 
 ;; Now the delimiter depends on the value being encoded.
 (expect
@@ -234,7 +247,7 @@
 ;; ---
 
 ;; Gloss supports repeating frames.
-(def rep-byte (repeated :byte ))
+(def rep-byte (repeated :byte))
 
 ;; By default encoded data is prefixed with a 32 bit integer which declares the number of repetitions.
 (expect
@@ -356,7 +369,7 @@
 
 ;; First, a codec which matches a single header, decoding:
 (defcodec init-header
-  [(string :utf-8 :delimiters [": "]) (string :utf-8 :delimiters [rn rnrn])])
+          [(string :utf-8 :delimiters [": "]) (string :utf-8 :delimiters [rn rnrn])])
 
 ;; - "name: value\r\n" to  ["name" "value"] or;
 (expect
@@ -376,16 +389,16 @@
 ;; That header codec can be repeated. The repeated section leaves its delimiter in the matched bytes to be consumed
 ;; by the internal, repeated headers.
 (defcodec initial-headers
-  (repeated init-header
-    :delimiters [rnrn]
-    :strip-delimiters? false))
+          (repeated init-header
+                    :delimiters [rnrn]
+                    :strip-delimiters? false))
 
 ;; The initial buffer can be decoded into a vector.
 (expect
   [["name" "value"] ["name2" "value2"]]
   (decode initial-headers initial-buf))
 
-;; <a id="init-transforms"></a>***tranforms***
+;; <a id="init-transforms"></a>***transforms***
 ;; ---
 
 ;; A post-decode transform works the output into a more practical form.
@@ -414,8 +427,8 @@
 (def simple-headers
   (compile-frame
     (repeated init-header
-      :delimiters [rnrn]
-      :strip-delimiters? false)
+              :delimiters [rnrn]
+              :strip-delimiters? false)
     input-to-vector
     output-to-map))
 
@@ -441,10 +454,10 @@
 (def simple-headers-selective-dlm
   (compile-frame
     (repeated init-header
-      :delimiters [rnrn]
-      :encoding-delimiter rn ; <- encode this delimiter
-      input-to-vector
-      output-to-map)))
+              :delimiters [rnrn]
+              :encoding-delimiter rn ; <- encode this delimiter
+              input-to-vector
+              output-to-map)))
 
 ;; A final limitation, empty set of headers fails.
 (expect
@@ -477,12 +490,12 @@
 
 ;; The header codec is similar to the initial one, but without the expectation of a space after the colon.
 (defcodec better-header
-  [(string :utf-8 :delimiters [":"]) (string :utf-8 :delimiters [rn rnrn])])
+          [(string :utf-8 :delimiters [":"]) (string :utf-8 :delimiters [rn rnrn])])
 
 ;; A post-decode transform method applies most of the rules described above.
 (defn output-to-merged-map [data]
   (apply merge-with #(str %1 "," %2)
-    (map (fn [[k v]] {(keyword (-> k trim lower-case)) (trim v)}) data)))
+         (map (fn [[k v]] {(keyword (-> k trim lower-case)) (trim v)}) data)))
 
 (expect
   {:name "value"
@@ -496,8 +509,8 @@
 (def better-headers
   (compile-frame
     (repeated better-header
-      :delimiters [rnrn]
-      :strip-delimiters? false)
+              :delimiters [rnrn]
+              :strip-delimiters? false)
     #(identity %)
     output-to-merged-map))
 
@@ -505,7 +518,7 @@
 (expect
   better-data
   (decode better-headers
-    (to-byte-buffer better-buf)))
+          (to-byte-buffer better-buf)))
 
 ;; &nbsp;
 ;;
@@ -550,10 +563,10 @@
 ;; - ("ab\r\nc\r\n d\r\n\t e\r\nf\r\n\r\n")
 ;; - becomes ("ab\r\nc" "d" " e\r\nf")
 (defcodec part-unfold-codec
-  (repeated
-    (delimited-block [rn-space rn-tab rnrn] true)
-    :delimiters [rnrn]
-    :strip-delimiters? false))
+          (repeated
+            (delimited-block [rn-space rn-tab rnrn] true)
+            :delimiters [rnrn]
+            :strip-delimiters? false))
 
 ;; This pre-decode transform method applies that codec, then interposes space
 ;; characters to give the expected unfolded form.
@@ -580,23 +593,23 @@
 ;; Rather than explicitly applying the transform to the buffer pre-decode, an
 ;; extended compile-frame takes a pre-decode argument.
 ;;
-;; Now a codec can also tranform the incoming buffer.
+;; Now a codec can also transform the incoming buffer.
 (defn compile-frame-ext
   ([frame pre-encoder pre-decoder post-decoder]
-    (let [codec (compile-frame frame)
-          read-codec (compose-callback
-                       codec
-                       (fn [x b]
-                         [true (post-decoder x) b]))]
-      (reify
-        Reader
-        (read-bytes [_ b]
-          (read-bytes read-codec (pre-decoder b)))
-        Writer
-        (sizeof [_]
-          (sizeof codec))
-        (write-bytes [_ buf v]
-          (write-bytes codec buf (pre-encoder v)))))))
+   (let [codec (compile-frame frame)
+         read-codec (compose-callback
+                      codec
+                      (fn [x b]
+                        [true (post-decoder x) b]))]
+     (reify
+         Reader
+       (read-bytes [_ b]
+         (read-bytes read-codec (pre-decoder b)))
+       Writer
+       (sizeof [_]
+         (sizeof codec))
+       (write-bytes [_ buf v]
+         (write-bytes codec buf (pre-encoder v)))))))
 
 ;; <a id="complete-codec"></a>***the codec***
 ;; ---
@@ -606,8 +619,8 @@
 (def folding-headers
   (compile-frame-ext
     (repeated better-header
-      :delimiters [rnrn]
-      :strip-delimiters? false)
+              :delimiters [rnrn]
+              :strip-delimiters? false)
     #(identity %)
     unfold
     output-to-merged-map))

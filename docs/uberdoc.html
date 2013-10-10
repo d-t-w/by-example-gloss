@@ -3034,7 +3034,7 @@ net.brehaut.ClojureTools = (function (SH) {
 <hr />
 
 <ul>
-<li><strong><em><a href="#the-basics">the basics</a></em></strong>
+<li><strong><a href="#the-basics">the basics</a></strong>
 <ul><li><a href="#frames">frames</a></li>
 <li><a href="#codec">codec</a></li>
 <li><a href="#nesting">nesting codec</a></li>
@@ -3044,13 +3044,13 @@ net.brehaut.ClojureTools = (function (SH) {
 <li><a href="#headers">headers</a></li>
 <li><a href="#gloss-extras">delimited-block and identity-frame</a></li>
 <li><a href="#decoding">strict decoding</a></li></ul></li>
-<li><strong><em><a href="#initial-title">an initial HTTP header codec</a></em></strong>
+<li><strong><a href="#initial-title">an initial HTTP header codec</a></strong>
 <ul><li><a href="#init-transforms">transforms</a></li>
 <li><a href="#init-codec">the codec</a></li>
 <li><a href="#init-limitations">limitations</a></li></ul></li>
-<li><strong><em><a href="#better-title">a better HTTP header codec</a></em></strong>
+<li><strong><a href="#better-title">a better HTTP header codec</a></strong>
 <ul><li><a href="#better-codec">the codec</a></li></ul></li>
-<li><strong><em><a href="#complete-title">a complete HTTP header codec</a></em></strong>
+<li><strong><a href="#complete-title">a complete HTTP header codec</a></strong>
 <ul><li><a href="#gloss-extension">gloss extension</a></li>
 <li><a href="#complete-codec">the codec</a></li></ul></li>
 </ul>
@@ -3060,7 +3060,20 @@ net.brehaut.ClojureTools = (function (SH) {
 <h2>The Basics</h2>
 
 <hr />
-</td><td class="codes"></td></tr><tr><td class="docs"><p><strong><em>Gloss is a DSL for describing byte formats.</em></strong></p>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>Recently I've spent my time building systems which rely on the ability to interpret data as quickly
+as possible, with little overhead, and if possible in a way that leans to extensibility.</p>
+
+<p>These systems are predominantly Netty based network services, so I've become more familiar
+with bytes and buffers. However, working a ByteBuffer into something meaningful in Java is not
+a task for the faint-hearted.</p>
+
+<p>That's where Gloss comes in. I've found it particularly useful for describing byte-structures and
+then encoding and decoding those structures, and performs well enough for my current needs.</p>
+
+<p>Here follows an example demonstrating many of the currently documented facets of Gloss, a
+few undocumented, and one mad extension.</p>
+
+<p><strong><em>Gloss is a DSL for describing byte formats.</em></strong></p>
 
 <p>In Gloss a byte format is called a <em>frame</em>, frames are compiled into <em>codec</em>, which allow you to:</p>
 
@@ -3086,13 +3099,13 @@ complicated codec can be built from several smaller, simple codec.</p>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>A frame can contain a number of different primitive data types.</p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>The examples below use :byte, consider these inter-changeable.</p>
-</td><td class="codes"><pre class="brush: clojure">[:byte, :int16, :int32, :int64, :float32, :float64, :ubyte, :uint16, :uint32, :uint64 ]</pre></td></tr><tr><td class="docs"><p>A very simple frame, a single byte.</p>
+</td><td class="codes"><pre class="brush: clojure">[:byte, :int16, :int32, :int64, :float32, :float64, :ubyte, :uint16, :uint32, :uint64]</pre></td></tr><tr><td class="docs"><p>A very simple frame, a single byte.</p>
 </td><td class="codes"><pre class="brush: clojure">(def byte-frame
-  :byte )</pre></td></tr><tr><td class="docs"><p>Endian-ness can be declared by appending -le or -be.</p>
+  :byte)</pre></td></tr><tr><td class="docs"><p>Endian-ness can be declared by appending -le or -be.</p>
 </td><td class="codes"><pre class="brush: clojure">(def little-endian-int-frame
-  :int32-le )</pre></td></tr><tr><td class="docs"><p>Frames are just clojure data structures, this frame is a vector of two bytes.</p>
+  :int32-le)</pre></td></tr><tr><td class="docs"><p>Frames are just clojure data structures, this frame is a vector of two bytes.</p>
 </td><td class="codes"><pre class="brush: clojure">(def vector-bytes-frame
-  [:byte :byte ])</pre></td></tr><tr><td class="docs"><p>This frame contains the same data, but in map form rather than a vector.</p>
+  [:byte :byte])</pre></td></tr><tr><td class="docs"><p>This frame contains the same data, but in map form rather than a vector.</p>
 </td><td class="codes"><pre class="brush: clojure">(def map-bytes-frame
   {:first :byte
    :second :byte})</pre></td></tr><tr><td class="docs"><p>Frames can contain constants which are not encoded, and are always decoded.</p>
@@ -3115,7 +3128,7 @@ complicated codec can be built from several smaller, simple codec.</p>
   127
   (decode byte-codec (to-byte-buffer 127)))</pre></td></tr><tr><td class="docs"><p>Gloss provides a codec defining macro, defcodec.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec vector-bytes-codec
-  vector-bytes-frame)</pre></td></tr><tr><td class="docs"><p>A vector encoded into a buffer</p>
+          vector-bytes-frame)</pre></td></tr><tr><td class="docs"><p>A vector encoded into a buffer</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   (to-byte-buffer '(126 127))
   (first (encode vector-bytes-codec [126 127])))</pre></td></tr><tr><td class="docs"><p>can be decoded from that buffer with the same codec.</p>
@@ -3123,8 +3136,8 @@ complicated codec can be built from several smaller, simple codec.</p>
   [126 127]
   (decode vector-bytes-codec (to-byte-buffer '(126 127))))</pre></td></tr><tr><td class="docs"><p>Rinse and repeat with the map-bytes-codec.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec map-bytes-codec
-  {:first :byte
-   :second :byte})</pre></td></tr><tr><td class="docs"><p>Gloss encodes map values in a consistent but arbitrary order. In this example the bytes could have
+          {:first :byte
+           :second :byte})</pre></td></tr><tr><td class="docs"><p>Gloss encodes map values in a consistent but arbitrary order. In this example the bytes could have
 been written as '(127 126)</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   (to-byte-buffer '(126 127))
@@ -3137,7 +3150,7 @@ been written as '(127 126)</p>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>A codec can be defined as a data structure which contains other codec.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec nested-codec
-  [vector-bytes-codec {:foo &quot;bar&quot;} byte-frame map-bytes-codec])</pre></td></tr><tr><td class="docs"><p>Meaning more complex codec can be built from simpler parts.</p>
+          [vector-bytes-codec {:foo &quot;bar&quot;} byte-frame map-bytes-codec])</pre></td></tr><tr><td class="docs"><p>Meaning more complex codec can be built from simpler parts.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect (to-byte-buffer '(123 124 125 126 127)) (first (encode nested-codec [[123 124]
                                                                              {:foo &quot;bar&quot;}
                                                                              125
@@ -3154,11 +3167,11 @@ been written as '(127 126)</p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Aside from these primitives, Gloss supports parsing streams of text.</p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>The first argument specifies a character encoding.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec unbound-codec
-  (string :utf-8 ))</pre></td></tr><tr><td class="docs"><p>String can be declared with a certain length</p>
+          (string :utf-8))</pre></td></tr><tr><td class="docs"><p>String can be declared with a certain length</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec fixed-length-string-codec
-  (string :utf-8 :length 50))</pre></td></tr><tr><td class="docs"><p>or as delimited. Any byte-sequence can be used as a delimiter.</p>
+          (string :utf-8 :length 50))</pre></td></tr><tr><td class="docs"><p>or as delimited. Any byte-sequence can be used as a delimiter.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec string-codec
-  (string :utf-8 :delimiters [&quot;x&quot; &quot;xx&quot; \y]))</pre></td></tr><tr><td class="docs"><p>When applied to a buffer, the text prior to the delimiter is extracted.</p>
+          (string :utf-8 :delimiters [&quot;x&quot; &quot;xx&quot; \y]))</pre></td></tr><tr><td class="docs"><p>When applied to a buffer, the text prior to the delimiter is extracted.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   &quot;derek&quot;
   (decode string-codec (to-byte-buffer &quot;derekx&quot;)))
@@ -3171,7 +3184,7 @@ been written as '(127 126)</p>
 </td><td class="codes"></td></tr><tr><td class="docs"><pre><code>:strip-delimiters? false
 </code></pre>
 </td><td class="codes"><pre class="brush: clojure">(defcodec dlm-inclusive-codec
-  (string :utf-8 :delimiters [&quot;x&quot; &quot;xx&quot; \y] :strip-delimiters? false))</pre></td></tr><tr><td class="docs">
+          (string :utf-8 :delimiters [&quot;x&quot; &quot;xx&quot; \y] :strip-delimiters? false))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(expect
   &quot;derekx&quot;
   (decode dlm-inclusive-codec (to-byte-buffer &quot;derekx&quot;) false))</pre></td></tr><tr><td class="docs"><p>When decoding with multiple delimiters:</p>
@@ -3195,7 +3208,7 @@ been written as '(127 126)</p>
     &quot;kylie&quot; [&quot;xx&quot;]
     [&quot;y&quot;]))</pre></td></tr><tr><td class="docs"><p>provide a function via the :value->delimiter argument.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec dlm-selective-codec
-  (string :utf-8 :delimiters [&quot;x&quot; &quot;xx&quot; \y] :value-&gt;delimiter choose-encoded-dlm))</pre></td></tr><tr><td class="docs"><p>Now the delimiter depends on the value being encoded.</p>
+          (string :utf-8 :delimiters [&quot;x&quot; &quot;xx&quot; \y] :value-&gt;delimiter choose-encoded-dlm))</pre></td></tr><tr><td class="docs"><p>Now the delimiter depends on the value being encoded.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   (to-byte-buffer &quot;derekx&quot;)
   (contiguous (encode dlm-selective-codec &quot;derek&quot;)))
@@ -3207,7 +3220,7 @@ been written as '(127 126)</p>
   (contiguous (encode dlm-selective-codec &quot;kirsty&quot;)))</pre></td></tr><tr><td class="docs"><p><a id="repeated"></a><strong><em>repeated frames</em></strong>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Gloss supports repeating frames.</p>
-</td><td class="codes"><pre class="brush: clojure">(def rep-byte (repeated :byte ))</pre></td></tr><tr><td class="docs"><p>By default encoded data is prefixed with a 32 bit integer which declares the number of repetitions.</p>
+</td><td class="codes"><pre class="brush: clojure">(def rep-byte (repeated :byte))</pre></td></tr><tr><td class="docs"><p>By default encoded data is prefixed with a 32 bit integer which declares the number of repetitions.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   (to-byte-buffer '(0 0 0 1 127))
   (first (encode rep-byte [127])))</pre></td></tr><tr><td class="docs"><p>Repeated frames always encode/decode to vectors.</p>
@@ -3298,7 +3311,7 @@ for consumption. All bytes must be consumed or an exception is thrown.</p>
 </td><td class="codes"><pre class="brush: clojure">(def initial-data {:name &quot;value&quot;
                    :name2 &quot;value2&quot;})</pre></td></tr><tr><td class="docs"><p>First, a codec which matches a single header, decoding:</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec init-header
-  [(string :utf-8 :delimiters [&quot;: &quot;]) (string :utf-8 :delimiters [rn rnrn])])</pre></td></tr><tr><td class="docs"><ul>
+          [(string :utf-8 :delimiters [&quot;: &quot;]) (string :utf-8 :delimiters [rn rnrn])])</pre></td></tr><tr><td class="docs"><ul>
 <li>"name: value\r\n" to  ["name" "value"] or;</li>
 </ul>
 </td><td class="codes"><pre class="brush: clojure">(expect
@@ -3314,9 +3327,9 @@ for consumption. All bytes must be consumed or an exception is thrown.</p>
   (contiguous (encode init-header [&quot;name&quot; &quot;value&quot;])))</pre></td></tr><tr><td class="docs"><p>That header codec can be repeated. The repeated section leaves its delimiter in the matched bytes to be consumed
 by the internal, repeated headers.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec initial-headers
-  (repeated init-header
-    :delimiters [rnrn]
-    :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>The initial buffer can be decoded into a vector.</p>
+          (repeated init-header
+                    :delimiters [rnrn]
+                    :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>The initial buffer can be decoded into a vector.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   [[&quot;name&quot; &quot;value&quot;] [&quot;name2&quot; &quot;value2&quot;]]
   (decode initial-headers initial-buf))</pre></td></tr><tr><td class="docs"><p><a id="init-transforms"></a><strong><em>tranforms</em></strong>
@@ -3339,8 +3352,8 @@ by the internal, repeated headers.</p>
 </td><td class="codes"><pre class="brush: clojure">(def simple-headers
   (compile-frame
     (repeated init-header
-      :delimiters [rnrn]
-      :strip-delimiters? false)
+              :delimiters [rnrn]
+              :strip-delimiters? false)
     input-to-vector
     output-to-map))</pre></td></tr><tr><td class="docs"><p>Decodes the sample data in a map correctly</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
@@ -3357,10 +3370,10 @@ repeated section, meaning the final written delimiter is wrong.</p>
 </td><td class="codes"><pre class="brush: clojure">(def simple-headers-selective-dlm
   (compile-frame
     (repeated init-header
-      :delimiters [rnrn]
-      :encoding-delimiter rn ; &lt;- encode this delimiter
-      input-to-vector
-      output-to-map)))</pre></td></tr><tr><td class="docs"><p>A final limitation, empty set of headers fails.</p>
+              :delimiters [rnrn]
+              :encoding-delimiter rn ; &lt;- encode this delimiter
+              input-to-vector
+              output-to-map)))</pre></td></tr><tr><td class="docs"><p>A final limitation, empty set of headers fails.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   Exception
   (decode simple-headers (to-byte-buffer rnrn)))</pre></td></tr><tr><td class="docs"><p>&nbsp;</p>
@@ -3388,10 +3401,10 @@ repeated section, meaning the final written delimiter is wrong.</p>
                   :name2 &quot;value2,value3,value4&quot;
                   :name3 &quot;VALUE5&quot;})</pre></td></tr><tr><td class="docs"><p>The header codec is similar to the initial one, but without the expectation of a space after the colon.</p>
 </td><td class="codes"><pre class="brush: clojure">(defcodec better-header
-  [(string :utf-8 :delimiters [&quot;:&quot;]) (string :utf-8 :delimiters [rn rnrn])])</pre></td></tr><tr><td class="docs"><p>A post-decode transform method applies most of the rules described above.</p>
+          [(string :utf-8 :delimiters [&quot;:&quot;]) (string :utf-8 :delimiters [rn rnrn])])</pre></td></tr><tr><td class="docs"><p>A post-decode transform method applies most of the rules described above.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn output-to-merged-map [data]
   (apply merge-with #(str %1 &quot;,&quot; %2)
-    (map (fn [[k v]] {(keyword (-&gt; k trim lower-case)) (trim v)}) data)))</pre></td></tr><tr><td class="docs">
+         (map (fn [[k v]] {(keyword (-&gt; k trim lower-case)) (trim v)}) data)))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(expect
   {:name &quot;value&quot;
    :name2 &quot;value2,value3&quot;}
@@ -3401,14 +3414,14 @@ repeated section, meaning the final written delimiter is wrong.</p>
 </td><td class="codes"><pre class="brush: clojure">(def better-headers
   (compile-frame
     (repeated better-header
-      :delimiters [rnrn]
-      :strip-delimiters? false)
+              :delimiters [rnrn]
+              :strip-delimiters? false)
     #(identity %)
     output-to-merged-map))</pre></td></tr><tr><td class="docs"><p>provides better HTTP header extraction.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   better-data
   (decode better-headers
-    (to-byte-buffer better-buf)))</pre></td></tr><tr><td class="docs"><p>&nbsp;</p>
+          (to-byte-buffer better-buf)))</pre></td></tr><tr><td class="docs"><p>&nbsp;</p>
 
 <p><a id="complete-title"></a></p>
 
@@ -3446,10 +3459,10 @@ as a simple space character.</p>
 <li>becomes ("ab\r\nc" "d" " e\r\nf")</li>
 </ul>
 </td><td class="codes"><pre class="brush: clojure">(defcodec part-unfold-codec
-  (repeated
-    (delimited-block [rn-space rn-tab rnrn] true)
-    :delimiters [rnrn]
-    :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>This pre-decode transform method applies that codec, then interposes space
+          (repeated
+            (delimited-block [rn-space rn-tab rnrn] true)
+            :delimiters [rnrn]
+            :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>This pre-decode transform method applies that codec, then interposes space
 characters to give the expected unfolded form.</p>
 
 <ul>
@@ -3474,28 +3487,28 @@ extended compile-frame takes a pre-decode argument.</p>
 <p>Now a codec can also tranform the incoming buffer.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn compile-frame-ext
   ([frame pre-encoder pre-decoder post-decoder]
-    (let [codec (compile-frame frame)
-          read-codec (compose-callback
-                       codec
-                       (fn [x b]
-                         [true (post-decoder x) b]))]
-      (reify
-        Reader
-        (read-bytes [_ b]
-          (read-bytes read-codec (pre-decoder b)))
-        Writer
-        (sizeof [_]
-          (sizeof codec))
-        (write-bytes [_ buf v]
-          (write-bytes codec buf (pre-encoder v)))))))</pre></td></tr><tr><td class="docs"><p><a id="complete-codec"></a><strong><em>the codec</em></strong>
+   (let [codec (compile-frame frame)
+         read-codec (compose-callback
+                      codec
+                      (fn [x b]
+                        [true (post-decoder x) b]))]
+     (reify
+         Reader
+       (read-bytes [_ b]
+         (read-bytes read-codec (pre-decoder b)))
+       Writer
+       (sizeof [_]
+         (sizeof codec))
+       (write-bytes [_ buf v]
+         (write-bytes codec buf (pre-encoder v)))))))</pre></td></tr><tr><td class="docs"><p><a id="complete-codec"></a><strong><em>the codec</em></strong>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>A complete HTTP header codec, using the Gloss extension that allows you to
 provide a method to modify the ByteBuffer before decoding.</p>
 </td><td class="codes"><pre class="brush: clojure">(def folding-headers
   (compile-frame-ext
     (repeated better-header
-      :delimiters [rnrn]
-      :strip-delimiters? false)
+              :delimiters [rnrn]
+              :strip-delimiters? false)
     #(identity %)
     unfold
     output-to-merged-map))</pre></td></tr><tr><td class="docs"><p>I ran some basic benchmarks that show this codec to be about 10x slower
