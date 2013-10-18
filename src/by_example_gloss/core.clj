@@ -1,3 +1,15 @@
+;; Recently I've been working with Colin Taylor and the team at SMX (http://www.smx.co.nz) building systems which
+;; attempt to process large volumes of data quickly and efficiently.
+;;
+;; These systems are predominantly JVM/Netty based network services, so I'm familiar with bytes and buffers, and I've
+;; become more familiar with the pains of working a ByteBuffer into something more meaningful.
+;;
+;; That's where Gloss comes in. I've found it particularly useful for describing byte-structures and
+;; then encoding and decoding those structures, and it performs well enough for my current needs.
+;;
+;; Here follows an example demonstrating some of the documented facets of Gloss which I used, a few undocumented,
+;; and one mad extension.
+;;
 ;; ## Content
 ;; ---
 ;;
@@ -25,19 +37,6 @@
 ;; <a id="the-basics"></a>
 ;; ## The Basics
 ;; ---
-
-;; Recently I've spent my time building systems which rely on the ability to interpret data as quickly
-;; as possible, with little overhead, and if possible in a way that leans to extensibility.
-;;
-;; These systems are predominantly Netty based network services, so I've become more familiar
-;; with bytes and buffers. However, working a ByteBuffer into something meaningful in Java is not
-;; a task for the faint-hearted.
-;;
-;; That's where Gloss comes in. I've found it particularly useful for describing byte-structures and
-;; then encoding and decoding those structures, and it performs well enough for my current needs.
-;;
-;; Here follows an example demonstrating many of the currently documented facets of Gloss, a
-;; few undocumented, and one mad extension.
 ;;
 ;; ***Gloss is a DSL for describing byte formats.***
 ;;
