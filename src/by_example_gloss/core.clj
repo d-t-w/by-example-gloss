@@ -1,8 +1,9 @@
 ;; Recently I've been working with Colin Taylor and the [team at SMX](http://smx.co.nz/) building systems which attempt to process large volumes of data quickly and efficiently.
 ;;
-;; These systems are predominantly JVM/Netty based network services, so I'm familiar with bytes and buffers, and I've become familiar with the pains of working a ByteBuffer into something meaningful. I've found Gloss particularly helpful for describing, encoding, and decoding byte-structures, I like its composable nature, and it performs well enough for my current needs.
+;; These systems are predominantly JVM/Netty based network services, so I'm familiar with bytes and buffers, and I've become familiar with the pains of working a ByteBuffer into a meaningful form.
+;; I've found Gloss particularly helpful for describing, encoding, and decoding byte-structures, I like its composable nature, and it performs well enough for my current needs.
 ;;
-;; Here follows some examples of the documented facets of Gloss that I used, a few undocumented, and one potential extension.
+;; Here follow some examples of the documented facets of Gloss that I used, a few undocumented, and one potential extension.
 ;;
 ;; ## Content
 ;; ---
