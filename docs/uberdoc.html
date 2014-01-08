@@ -3029,7 +3029,14 @@ net.brehaut.ClojureTools = (function (SH) {
   };
 })(SyntaxHighlighter);
 </script><title>d-t-w.by-example-gloss -- Marginalia</title></head><body><table><tr><td class="docs"><div class="header"><h1 class="project-name">d-t-w.by-example-gloss</h1><h2 class="project-version">0.1</h2><br /><p>Encoding and Decoding Data Structures with Gloss</p>
-</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.5.1</td></tr><tr><td class="dep-name">gloss</td><td class="dotted"><hr /></td><td class="dep-version">0.2.2-rc1</td></tr><tr><td class="dep-name">expectations</td><td class="dotted"><hr /></td><td class="dep-version">1.4.53</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#by-example-gloss.core">by-example-gloss.core</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#by-example-gloss.core" name="by-example-gloss.core"><h1 class="project-name">by-example-gloss.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h2>Content</h2>
+</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.5.1</td></tr><tr><td class="dep-name">gloss</td><td class="dotted"><hr /></td><td class="dep-version">0.2.2-rc1</td></tr><tr><td class="dep-name">expectations</td><td class="dotted"><hr /></td><td class="dep-version">1.4.53</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#by-example-gloss.core">by-example-gloss.core</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#by-example-gloss.core" name="by-example-gloss.core"><h1 class="project-name">by-example-gloss.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>Recently I've been working with Colin Taylor and the <a href="http://smx.co.nz/">team at SMX</a> building systems which attempt to process large volumes of data quickly and efficiently.</p>
+
+<p>These systems are predominantly JVM/Netty based network services, so I'm familiar with bytes and buffers, and I've become familiar with the pains of working a ByteBuffer into a meaningful form.
+I've found Gloss particularly helpful for describing, encoding, and decoding byte-structures, I like its composable nature, and it performs well enough for my current needs.</p>
+
+<p>Here follow some examples of the documented facets of Gloss that I used, a few undocumented, and one potential extension.</p>
+
+<h2>Content</h2>
 
 <hr />
 
@@ -3060,18 +3067,6 @@ net.brehaut.ClojureTools = (function (SH) {
 <h2>The Basics</h2>
 
 <hr />
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Recently I've spent my time building systems which rely on the ability to interpret data as quickly
-as possible, with little overhead, and if possible in a way that leans to extensibility.</p>
-
-<p>These systems are predominantly Netty based network services, so I've become more familiar
-with bytes and buffers. However, working a ByteBuffer into something meaningful in Java is not
-a task for the faint-hearted.</p>
-
-<p>That's where Gloss comes in. I've found it particularly useful for describing byte-structures and
-then encoding and decoding those structures, and performs well enough for my current needs.</p>
-
-<p>Here follows an example demonstrating many of the currently documented facets of Gloss, a
-few undocumented, and one mad extension.</p>
 
 <p><strong><em>Gloss is a DSL for describing byte formats.</em></strong></p>
 
@@ -3332,7 +3327,7 @@ by the internal, repeated headers.</p>
                     :strip-delimiters? false))</pre></td></tr><tr><td class="docs"><p>The initial buffer can be decoded into a vector.</p>
 </td><td class="codes"><pre class="brush: clojure">(expect
   [[&quot;name&quot; &quot;value&quot;] [&quot;name2&quot; &quot;value2&quot;]]
-  (decode initial-headers initial-buf))</pre></td></tr><tr><td class="docs"><p><a id="init-transforms"></a><strong><em>tranforms</em></strong>
+  (decode initial-headers initial-buf))</pre></td></tr><tr><td class="docs"><p><a id="init-transforms"></a><strong><em>transforms</em></strong>
 <hr /></p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>A post-decode transform works the output into a more practical form.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn output-to-map [data]
@@ -3484,7 +3479,7 @@ characters to give the expected unfolded form.</p>
     :else f))</pre></td></tr><tr><td class="docs"><p>Rather than explicitly applying the transform to the buffer pre-decode, an
 extended compile-frame takes a pre-decode argument.</p>
 
-<p>Now a codec can also tranform the incoming buffer.</p>
+<p>Now a codec can also transform the incoming buffer.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn compile-frame-ext
   ([frame pre-encoder pre-decoder post-decoder]
    (let [codec (compile-frame frame)
